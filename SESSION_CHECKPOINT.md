@@ -1,4 +1,24 @@
-# Resume checkpoint — PTenoLauncher 0.2.0
+### Eight-language work interrupted by environment disconnect - 2026-10-28
+
+The owner approved Polish (pl), German (de), Spanish (es), French (fr), Brazilian Portuguese (pt-BR) and Russian (ru), alongside Ukrainian/English. Local changes were written in the existing Windows workspace before its execution environment became unavailable. **These new source changes have NOT been published to this repository and their final build/test result is NOT VERIFIED.** The last verified public source remains the 288-test localization/auth-stage checkpoint; its Windows run 40730734856 succeeded.
+
+Local files to recover and inspect:
+- src/PTenoLauncher.Desktop/Localization/Locales/{pl,de,es,fr,pt-BR,ru}.json: six real translation catalogs, 201 entries each (187 existing keys plus 14 readiness keys); no generated English-only placeholder catalogs.
+- TextCatalog.cs: eight native-name language choices, canonical language-code selection and additional-catalog lookup.
+- TextCatalog.Locales.cs: embedded-resource loading, complete-key checks and composite-format/placeholder validation.
+- TextCatalog.Messages.cs: additional locale loading, culture-aware formatting, cross-locale static-message refresh and readiness keys.
+- TextCatalog.Readiness.cs: shared resource-based readiness presentation.
+- Desktop csproj: embedded JSON resources; MainWindow.axaml: named LanguagePicker.
+- ViewModel Fabric/Quilt/remote statuses and optional choices: language refresh.
+- tests/PTenoLauncher.Tests/AdditionalLanguagesTests.cs: 17 expanded cases for eight complete catalogs, rejected missing/broken translations, actual picker/SQLite reload and original log preservation.
+
+Initial eight-language framework build passed with 0 errors/warnings before the final readiness/tests changes. The final command started the solution build and full test suite, writing artifacts/0.2.0/eight-languages-build.log, eight-languages-tests.log and tests/eight-languages.trx; transport disconnected before its output could be read. Do not treat the previous 288-test result as verification of these new changes. First inspect durable files when Windows access returns; avoid duplicate jobs if one is still running.
+
+Next: verify JSON/Unicode/formats; inspect/fix the final build/tests; check all eight languages in the actual window, persistence and offline readiness. Update README, docs/LOCALIZATION.md, DEVELOPMENT_STATUS.md, TEST_REPORT.md, docs/ROADMAP.md, RELEASE_NOTES.md and traceability with actual results, then publish the recovered source and verify the new CI/prerelease. Preserve all 184 requirements and AI-development disclosure. Local SESSION_CHECKPOINT.md predates this remote note; merge it when reconnecting instead of overwriting this checkpoint.
+
+All current catalog entries are translated, but low-level mod/security diagnostics and some previously formatted dynamic messages remain outside complete localization. Native-speaker/Windows DPI linguistic review has not been performed. Do not claim complete application-wide translation. Microsoft AppID review approval and licensed gameplay remain pending; no new account credentials or tokens were used.
+
+ Resume checkpoint — PTenoLauncher 0.2.0
 
 ## Localization and sign-in diagnostics - 2026-10-28
 
