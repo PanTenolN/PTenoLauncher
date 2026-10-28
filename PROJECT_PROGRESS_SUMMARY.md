@@ -1,5 +1,11 @@
 # PTenoLauncher — стан модулів
 
+## Verified process-lifecycle preview - 2026-10-28
+
+Final release source: `827e8832a95baf5d2c9f805fb3c43f563427c90b`; implementation commit: `95d7d7e7ec94dbfee0514f390f239ef35c419505`. Windows CI **40773211706 SUCCESS**: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40773211706 . Release build **0 errors/warnings**, **330/330 tests passed**, 184 original / 188 current requirements and 43 graded modules validated, both ZIP CRC checks passed, fresh extracted self-contained Portable initialized successfully. `gameLaunched=false`.
+
+Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.0-preview.827e8832a95b . Setup EXE, Portable ZIP, Source ZIP and SHA256SUMS were verified by release metadata; the final package checks require the progress report and continuation/source files. This supersedes older entries awaiting CI/publication. No installer lifecycle, Microsoft approval, actual Minecraft gameplay or live AI/provider-quality result is implied. Binaries remain unsigned. Detailed return point: `docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md`; module grades: `PROJECT_PROGRESS_SUMMARY.md`. Next independent P0 work remains the Java 8/17/21/25 matrix, managed-runtime receipt/path integrity and historical assets/arguments.
+
 Оновлено 2026-10-28. Це контрольна шкала готовності з нового завдання, а не математичний відсоток завершення всього продукту. 0% — немає реалізації; 25% — початковий код; 50% — часткова працездатність; 75% — основна реалізація з автоматичними тестами, але важливими прогалинами інтеграції; 100% — завершено й перевірено у відповідному обсязі. Синтетичний процес не є Minecraft, а успішна збірка не є перевіркою гри.
 
 База: release source `aec1846517865a0953b1037bd6b55f8ce8807efc`, Windows CI `40759155278`, документація `4374db9f44bacb2fac2960b2f01a63d532b7e603`. Поточний блок: кероване завершення процесу й підтвердження зупинки; **330/330 тестів**, Release build **0 errors / 0 warnings**. Результат нової публікації записується окремо в `docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md`; попередній перевірений реліз — https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.0-preview.aec184651786 .
