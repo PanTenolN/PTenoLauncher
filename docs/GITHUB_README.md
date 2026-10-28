@@ -22,7 +22,7 @@ The repository contains the launcher source, tests, build scripts and installer 
 - Mods navigation hidden for Vanilla profiles; a selected-profile mods-folder button.
 - Launch process/console and official authentication code with protected local account storage. Their presence does not establish successful gameplay.
 
-The source checkpoint passed **319 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
+The source checkpoint passed **320 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
 
 ## Microsoft / Minecraft authentication
 

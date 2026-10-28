@@ -25,7 +25,7 @@ The namespace selector shows string/pending/manual/review counts. Load the JSON 
 
 Missing strings are sent in bounded batches of up to 32. Several billed requests may occur. Each completed batch is validated and saved atomically; a failed/cancelled operation resumes from saved progress only when explicitly requested again. Already translated unchanged strings are not resent. No automatic network job runs after startup or a mod update.
 
-After updating a mod, import its new JAR again. New/changed non-manual strings become pending. Manual corrections are preserved; changed English sources mark them for review and exclude them from the exported pack until you review/save them. A previous draft is retained locally to recover removed source keys. The JSON editor saves actual changes as manual values. Formatting placeholders and known Minecraft formatting codes must be preserved.
+After updating a mod, import its new JAR again. New/changed non-manual strings become pending. Manual corrections are preserved; changed English sources mark them for review and exclude them from the exported pack until you review/save them. A previous draft is retained locally to recover removed source keys. The JSON editor saves actual changes as manual values. Formatting placeholders and known Minecraft formatting codes must be preserved. Unnumbered Java printf arguments must retain their order to prevent type errors; numbered arguments may be reordered.
 
 ## Offline editing and resource packs
 

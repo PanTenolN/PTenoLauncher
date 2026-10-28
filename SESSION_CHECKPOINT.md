@@ -1,5 +1,9 @@
 # Resume checkpoint — PTenoLauncher 0.2.0
 
+## Final Java-format guard - 2026-10-28
+
+Added a regression guard against reordering unnumbered Java printf placeholders (for example %s then %d). Numbered placeholders can still be reordered safely. Final local verification: **320/320 tests passed**, zero failures/errors/skips/not-run; Release build 0 errors/warnings. Evidence: artifacts/0.2.0/online-ai-placeholder-build.log; online-ai-placeholder-tests.log; tests/online-ai-placeholder.trx. Prior 319-case checkpoint/native publish and GitHub run 40758215281 succeeded; the new guard requires its own subsequent CI/prerelease. No real OpenAI/Minecraft or installer-lifecycle test is claimed.
+
 Remote interrupted-block checkpoint 745b45502541bb4ff0a10771aeecde1cccb7bf05 is retained in GitHub history; its unverified state is superseded by the recovered, tested block below. No original architecture or files were recreated.
 
 ## Eight languages and optional online AI - 2026-10-28
@@ -131,3 +135,6 @@ Localization/auth-stage source published: commit 8fe5ae248f430e096f479e3e32294da
 
 
 Native online-AI checkpoint: self-contained win-x64 publish PASS (online-ai-publish.log); isolated native startup PASS, initialized=True, code 0 (.local/online-ai-native/gui-smoke.txt; online-ai-native-smoke.log). This verifies launcher startup, not live AI/Minecraft or installer lifecycle.
+
+
+Published recovered eight-language/online-AI source: commit 6337ef265bf342e4e137000a975f6256190e5adf; tree b626e88a5661692d485eef28bf353fbeb958a836. 319 tests pass, native startup passes. New CI/prerelease awaits inspection. Live provider and Minecraft tests remain unverified; see docs/ONLINE_AI.md. No real key or account token used.

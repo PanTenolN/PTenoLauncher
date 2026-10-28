@@ -95,6 +95,7 @@ public sealed class OnlineAiTests
     [InlineData("Value {name}", "Значення")]
     [InlineData("§aHello", "Привіт")]
     [InlineData("%1$d items", "%2$d речей")]
+    [InlineData("%s has %d items", "%d речей має %s")]
     public void TranslationCannotRemoveOrChangePlaceholders(string original, string translated) =>
         Assert.Throws<InvalidDataException>(() => TranslationRules.Value(original, translated));
 

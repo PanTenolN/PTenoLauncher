@@ -1,5 +1,9 @@
 # PTenoLauncher 0.2.0 — Test Report
 
+## Final Java-format guard - 2026-10-28
+
+Added a regression guard against reordering unnumbered Java printf placeholders (for example %s then %d). Numbered placeholders can still be reordered safely. Final local verification: **320/320 tests passed**, zero failures/errors/skips/not-run; Release build 0 errors/warnings. Evidence: artifacts/0.2.0/online-ai-placeholder-build.log; online-ai-placeholder-tests.log; tests/online-ai-placeholder.trx. Prior 319-case checkpoint/native publish and GitHub run 40758215281 succeeded; the new guard requires its own subsequent CI/prerelease. No real OpenAI/Minecraft or installer-lifecycle test is claimed.
+
 ## Eight languages and optional online AI - 2026-10-28
 
 Development resumed and the interrupted eight-language block was recovered. Eight selectable offline UI catalogs (uk/en/pl/de/es/fr/pt-BR/ru) now cover 230 keys each, including AI controls and major offline readiness findings. Catalog completeness/format validation, actual picker switching and SQLite reload pass. Low-level mod/security diagnostics, some already-formatted live statuses and native-speaker/DPI review remain incomplete; this is not full application-wide localization.

@@ -111,7 +111,12 @@ public static class TranslationRules
     {
         if (translated.Length > 16000 || translated.Contains('\0') || (original.Length > 0 && string.IsNullOrWhiteSpace(translated))) throw new InvalidDataException("Invalid translated value.");
         const string pattern = @"%(?:\d+\$)?[-#+ 0,(<]*\d*(?:\.\d+)?(?:[tT][a-zA-Z]|[a-zA-Z%])|\$?\{[A-Za-z0-9_.]+\}|§[0-9a-fk-orxA-FK-ORX]";
-        string[] Tokens(string value) => Regex.Matches(value, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)).Select(m => m.Value).Order(StringComparer.Ordinal).ToArray();
-        if (!Tokens(original).SequenceEqual(Tokens(translated))) throw new InvalidDataException("Translation changed formatting placeholders or Minecraft color codes.");
+        string[] Tokens(string value) => Regex.Matches(value, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)).Select(m => m.Value).ToArray();
+        var before = Tokens(original); var after = Tokens(translated);
+        // Java Formatter binds unnumbered %s/%d arguments by order; changing that
+        // order can cause a type error even when the placeholder multiset matches.
+        if (!before.Order(StringComparer.Ordinal).SequenceEqual(after.Order(StringComparer.Ordinal)) ||
+            !before.Where(p => p.StartsWith('%') && !p.Contains('$')).SequenceEqual(after.Where(p => p.StartsWith('%') && !p.Contains('$'))))
+            throw new InvalidDataException("Translation changed formatting placeholders or Minecraft color codes.");
     }
 }
