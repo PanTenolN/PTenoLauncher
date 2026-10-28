@@ -1,5 +1,13 @@
 # PTenoLauncher 0.2.0 — Development Preview
 
+## Localization and sign-in diagnostics - 2026-10-28
+
+Development resumed at the owner's request. Added 94 Ukrainian/English catalog messages, localized ViewModel actions/statuses, picker/dialog titles, snapshots, profile/mod counts and major readiness causes. Language switching refreshes computed labels and persisted language is explicitly applied during initialization. Original user data and game console content are not translated. Authentication failures now include a fixed enum stage; no response bodies, tokens or full URLs are logged. See docs/MICROSOFT_REVIEW_FOLLOWUP.md.
+
+Local build/test evidence is recorded in artifacts/0.2.0/localization-final-build.log, localization-tests.log and tests/localization.trx. The previous source checkpoint's Windows runner and prerelease publication both succeeded (run 40728874523, commit 92998deeb0907798a02fef7404f98c5a1e58c0a7). Actual Setup, Portable, Source ZIP and SHA256 sums are public; current localization changes require their own new build. Current installer lifecycle/gameplay remain unverified.
+
+Localization is still PARTIAL: low-level mod/security diagnostics, previously formatted dynamic messages after a live language change, theme names and exhaustive linguistic/accessibility review remain. UI-07/UI-08 must not be promoted to complete. No additional language is claimed. All 184 requirements are preserved. Microsoft review submission is owner-reported; approval remains pending. A scoped connected-mail search for PTenoLauncher or its exact Client ID returned no messages; this does not prove that no approval email exists.
+
 ## Publication and localization - 2026-10-28
 
 Prepared browsable source publication and a Windows workflow that tests/builds/verifies packages before publishing a uniquely tagged prerelease. Remote workflow/release execution is not yet verified. Ukrainian/English remain partial; docs/LOCALIZATION.md lists missing coverage. No additional language or complete localization is claimed. Microsoft review submission was reported by the owner; approval is pending.
@@ -135,3 +143,6 @@ All approved requirements, including Vanilla navigation, are retained in the 184
 Development resumed on user request for the installed-mod offline-readiness block. Sinytra Connector future requirements remain Not Implemented and are retained in the roadmap.
 
 Offline scope clarification: adding an existing local JAR or verified cached file does not download a new mod from the internet. Missing uncached files/dependencies require online access. Static checks of installed mods remain useful before offline gameplay. Further development priority is core licensed launch/authentication and native loader support; no additional offline-install subsystem is planned for this block.
+
+
+Final local verification for the localization/sign-in-stage block: Release build 0 errors, 0 warnings; 288/288 tests passed, no failures/errors/skips/not-run. Includes 7 new expanded cases in LocalizationTests. No real authentication/gameplay or current installer lifecycle is claimed.

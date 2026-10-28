@@ -1,3 +1,4 @@
+using PTenoLauncher.Desktop.Localization;
 using System.Collections.ObjectModel;
 using PTenoLauncher.Core;
 using PTenoLauncher.Infrastructure.Mods;
@@ -38,16 +39,16 @@ public sealed partial class MainViewModel
         var hits = await services.Modrinth.SearchAsync(RemoteQuery, profile.MinecraftVersion, profile.Loader, ct);
         RemoteSearchResults.Clear(); foreach (var hit in hits) RemoteSearchResults.Add(hit);
         SelectedRemoteProject = RemoteSearchResults.FirstOrDefault();
-        Status = $"Modrinth: {hits.Count} результатів" + (services.Modrinth.UsedCache ? " (кеш)." : ".");
+        Status = TextCatalog.Format("SearchCount", hits.Count) + (services.Modrinth.UsedCache ? TextCatalog.Get("Message043") : ".");
     });
     public Task LoadRemoteVersionsAsync() => RunAsync(async ct =>
     {
-        var profile = RequireProfile(); var project = SelectedRemoteProject ?? throw new InvalidOperationException("Виберіть мод.");
+        var profile = RequireProfile(); var project = SelectedRemoteProject ?? throw new InvalidOperationException(TextCatalog.Get("Message044"));
         var versions = await services.Modrinth.GetVersionsAsync(project.Id, profile.MinecraftVersion, profile.Loader, ct);
         RemoteVersions.Clear();
         foreach (var version in versions.OrderBy(v => v.Channel == "release" ? 0 : v.Channel == "beta" ? 1 : 2).ThenByDescending(v => v.Published).ThenBy(v => v.Id, StringComparer.Ordinal)) RemoteVersions.Add(version);
         SelectedRemoteVersion = RemoteVersions.FirstOrDefault();
-        Status = $"Сумісних версій: {RemoteVersions.Count}.";
+        Status = TextCatalog.Format("CompatibleCount", RemoteVersions.Count);
     });
     public void InvalidateModPlan()
     {
@@ -59,14 +60,14 @@ public sealed partial class MainViewModel
     {
         if(!OptionalChoices.Contains(choice))return;
         combinedPlan=null;RemoteConfirmed=false;UnknownSourceAccepted=false;RemoteEntries.Clear();optionalRevision++;
-        RemoteSummary="Вибір необов'язкових компонентів змінено. Застосуйте його й перевірте новий кошик.";
+        RemoteSummary=TextCatalog.Get("Message045");
     }
     public Task ClearOptionalAsync() => RunAsync(async ct =>
     {
         foreach(var choice in OptionalChoices)choice.IsSelected=false;
         await ResolveCombinedAsync(ct);
     });
-    public void ClearInstallationCart() { Cart.Clear(); ClearRemotePlan(); CartSummary = "Кошик порожній."; UnknownSourceAccepted = false; }
+    public void ClearInstallationCart() { Cart.Clear(); ClearRemotePlan(); CartSummary = TextCatalog.Get("Message000"); UnknownSourceAccepted = false; }
     public Task ResolveCartAsync() => RunAsync(ResolveCombinedAsync);
     private async Task ResolveCombinedAsync(CancellationToken ct)
     {
@@ -75,7 +76,7 @@ public sealed partial class MainViewModel
         combinedPlan=null;RemoteConfirmed=false;UnknownSourceAccepted=false;
         var plan = await services.RemoteMods.PreviewLocalAsync(profile, inputs, roots, ct, selectedOptions);
         if (SelectedProfile?.Id != profile.Id || !inputs.SequenceEqual(Cart) || revision != optionalRevision)
-        { InvalidateModPlan(); Status = "Профіль або кошик змінено; план відхилено."; return; }
+        { InvalidateModPlan(); Status = TextCatalog.Get("Message046"); return; }
         combinedPlan = plan; RemoteConfirmed = false; UnknownSourceAccepted = false;
         RemoteEntries.Clear(); foreach (var entry in plan.Remote.Resolution.Entries) RemoteEntries.Add(entry);
         var activeOptions=(plan.Remote.Resolution.SelectedOptional ?? []).ToHashSet();
@@ -83,30 +84,30 @@ public sealed partial class MainViewModel
         Changed(nameof(HasOptionalChoices));
         CartSummary = string.Join(Environment.NewLine, plan.LocalFiles.Select(f =>
             (f.Item.Inspection.Name ?? f.Item.Inspection.FileName) + " " + f.Item.Inspection.Version + " · " +
-            (f.Identity is null ? "Локальний JAR / Unknown Source" : "Локальний JAR / Modrinth SHA512") +
+            (f.Identity is null ? TextCatalog.Get("Message047") : TextCatalog.Get("Message048")) +
             " · " + (f.Item.Inspection.Size / 1048576.0).ToString("0.##") + " MB"));
         RemoteSummary = string.Join(Environment.NewLine, new[] {
-            "Локальних файлів: " + plan.LocalFiles.Count + "; каталог: " + plan.Remote.Resolution.Entries.Count + "; завантаження: " + (plan.DownloadBytes / 1048576.0).ToString("0.##") + " MB.",
-            plan.Remote.Resolution.Entries.Count == 0 ? "Використано лише локальні метадані; зовнішні залежності не підтверджені." : plan.Remote.CachedMetadata ? "Використано кешовані метадані; новіші версії не підтверджені." : "Використано доступні метадані Modrinth."
-        }.Concat(plan.Blockers.Concat(plan.Remote.Resolution.Blockers).Select(b => "Блокування: " + b))
-         .Concat(plan.Warnings.Concat(plan.Remote.Resolution.Warnings).Select(w => "Попередження: " + w)));
+            TextCatalog.Get("Message049") + plan.LocalFiles.Count + TextCatalog.Get("Message050") + plan.Remote.Resolution.Entries.Count + TextCatalog.Get("Message051") + (plan.DownloadBytes / 1048576.0).ToString("0.##") + " MB.",
+            plan.Remote.Resolution.Entries.Count == 0 ? TextCatalog.Get("Message052") : plan.Remote.CachedMetadata ? TextCatalog.Get("Message053") : TextCatalog.Get("Message054")
+        }.Concat(plan.Blockers.Concat(plan.Remote.Resolution.Blockers).Select(b => TextCatalog.Get("Message055") + b))
+         .Concat(plan.Warnings.Concat(plan.Remote.Resolution.Warnings).Select(w => TextCatalog.Get("Message056") + w)));
         Changed(nameof(NeedsUnknownAcceptance));
-        Status = plan.CanInstall ? "Спільний кошик розраховано. Перегляньте всі файли й підтвердьте встановлення." : "Кошик містить помилки; встановлення заблоковано.";
+        Status = plan.CanInstall ? TextCatalog.Get("Message057") : TextCatalog.Get("Message058");
     }
     public Task AddRemoteAsync() => RunAsync(async ct =>
     {
-        var version = SelectedRemoteVersion ?? throw new InvalidOperationException("Спочатку виберіть версію мода.");
+        var version = SelectedRemoteVersion ?? throw new InvalidOperationException(TextCatalog.Get("Message059"));
         remoteRoots.RemoveAll(r => r.ProjectId == version.ProjectId);
         remoteRoots.Add(new(version.ProjectId, version.Id)); InvalidateModPlan();
         await ResolveCombinedAsync(ct);
     });
     private async Task InstallCombinedAsync(CancellationToken ct)
     {
-        var profile = RequireProfile(); var plan = combinedPlan ?? throw new InvalidOperationException("Спочатку розрахуйте спільний кошик кнопкою «Знайти залежності».");
-        var progress = new Progress<DownloadProgress>(p => Status = "Моди: " + p.Name + " — " + (p.Received / 1024).ToString("N0") + " / " + (p.Total / 1024)?.ToString("N0") + " KB");
+        var profile = RequireProfile(); var plan = combinedPlan ?? throw new InvalidOperationException(TextCatalog.Get("Message060"));
+        var progress = new Progress<DownloadProgress>(p => Status = TextCatalog.Get("Message061") + p.Name + " — " + (p.Received / 1024).ToString("N0") + " / " + (p.Total / 1024)?.ToString("N0") + " KB");
         await services.RemoteMods.InstallLocalAsync(profile, plan, RemoteConfirmed, UnknownSourceAccepted, progress, ct);
         ClearInstallationCart();
-        Status = "Спільний кошик встановлено однією транзакцією. Для гри потрібні встановлений Mod Loader, Java й підтверджений акаунт.";
+        Status = TextCatalog.Get("Message062");
     }
     public Task InstallRemoteAsync() => RunAsync(InstallCombinedAsync);
 }

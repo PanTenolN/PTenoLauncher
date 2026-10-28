@@ -2,7 +2,7 @@ using Avalonia;
 namespace PTenoLauncher.Desktop.Localization;
 
 public sealed record UiLanguage(string Code, string Name) { public override string ToString() => Name; }
-public static class TextCatalog
+public static partial class TextCatalog
 {
     public static readonly UiLanguage[] Languages = [new("uk", "Українська"), new("en", "English")];
     public static string Language { get; private set; } = "uk";

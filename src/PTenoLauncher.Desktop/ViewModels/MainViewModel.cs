@@ -1,3 +1,4 @@
+using PTenoLauncher.Desktop.Localization;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using PTenoLauncher.Core;
@@ -42,7 +43,8 @@ public sealed partial class MainViewModel : ObservableObject
             }
             ResetFabricSelection(); ResetQuiltSelection();
             ClearRemotePlan(); RemoteSearchResults.Clear(); RemoteVersions.Clear(); SelectedRemoteProject = null; SelectedRemoteVersion = null;
-            Cart.Clear(); CartSummary = "Кошик порожній."; UnknownSourceAccepted = false;
+            Cart.Clear(); CartSummary = TextCatalog.Get("Message000"); UnknownSourceAccepted = false;
+            readinessReport = null; Readiness = TextCatalog.Get("Message006");
             Changed(nameof(ProfileCount)); SelectionChanged();
         }
     }
@@ -65,18 +67,19 @@ public sealed partial class MainViewModel : ObservableObject
     private bool busy;
     public bool IsBusy { get => busy; private set { Set(ref busy, value); Changed(nameof(IsIdle)); foreach (var command in commands) command.Refresh(); CancelCommand.Refresh(); } }
     public bool IsIdle => !IsBusy;
-    public string ModeText => Offline ? "ОФЛАЙН · мережеві дії вимкнені" : "ОНЛАЙН · локальні дані доступні завжди";
-    public string ProfileCount => $"{Profiles.Count} профілів";
-    private string status = "Готово.";
-    public string Status { get => status; set => Set(ref status, value); }
-    private string catalogStatus = "Каталог ще не завантажено.";
-    public string CatalogStatus { get => catalogStatus; set => Set(ref catalogStatus, value); }
-    private string account = "Вхід не виконано";
+    public string ModeText => Offline ? TextCatalog.Get("Message001") : TextCatalog.Get("Message002");
+    public string ProfileCount => TextCatalog.Format("ProfileCount", Profiles.Count);
+    private string status = TextCatalog.Get("Message003");
+    public string Status { get => TextCatalog.Relocalize(status); set => Set(ref status, value); }
+    private string catalogStatus = TextCatalog.Get("Message004");
+    public string CatalogStatus { get => TextCatalog.Relocalize(catalogStatus); set => Set(ref catalogStatus, value); }
+    private string account = TextCatalog.Get("Message005");
     public string Account { get => account; set => Set(ref account, value); }
-    private string readiness = "Оберіть профіль і перевірте файли, Java та підтверджений акаунт.";
-    public string Readiness { get => readiness; set => Set(ref readiness, value); }
-    private string cartSummary = "Кошик порожній.";
-    public string CartSummary { get => cartSummary; set => Set(ref cartSummary, value); }
+    private string readiness = TextCatalog.Get("Message006");
+    private ReadinessReport? readinessReport;
+    public string Readiness { get => readinessReport is null ? TextCatalog.Relocalize(readiness) : TextCatalog.RenderReadiness(readinessReport); set => Set(ref readiness, value); }
+    private string cartSummary = TextCatalog.Get("Message000");
+    public string CartSummary { get => TextCatalog.Relocalize(cartSummary); set => Set(ref cartSummary, value); }
     private bool unknownSourceAccepted;
     public bool UnknownSourceAccepted { get => unknownSourceAccepted; set => Set(ref unknownSourceAccepted, value); }
     public string DataRoot => services.Paths.Root;
@@ -90,45 +93,45 @@ public sealed partial class MainViewModel : ObservableObject
         }
         CancelCommand = new(() => { operation?.Cancel(); return Task.CompletedTask; }, () => IsBusy);
         SaveCommand = Command(SaveProfileAsync);
-        BackupCommand = Command(async ct => { var file = await services.Backups.CreateAsync(RequireProfile(), ct); Status = "Резервну копію перевірено: " + file; });
+        BackupCommand = Command(async ct => { var file = await services.Backups.CreateAsync(RequireProfile(), ct); Status = TextCatalog.Get("Message007") + file; });
         NewCommand = Command(_ => { SelectedProfile = null; ProfileName = ""; VersionId = SelectedVersion?.Id ?? ""; Loader = ModLoader.Vanilla; Memory = "4096"; JavaPath = ""; return Task.CompletedTask; });
         ArchiveCommand = Command(async ct =>
         {
             var p = RequireProfile(); await services.Store.SaveProfileAsync(p with { Archived = true }, ct);
-            await ReloadProfilesAsync(ct); SelectedProfile = null; Status = "Профіль архівовано. Файли збережено.";
+            await ReloadProfilesAsync(ct); SelectedProfile = null; Status = TextCatalog.Get("Message008");
         });
-        RefreshVersionsCommand = Command(async ct => { SetCatalog(await services.Versions.RefreshAsync(ct)); Status = "Каталог оновлено з Mojang."; });
+        RefreshVersionsCommand = Command(async ct => { SetCatalog(await services.Versions.RefreshAsync(ct)); Status = TextCatalog.Get("Message009"); });
         SaveSettingsCommand = Command(async ct =>
         {
             if (!string.IsNullOrWhiteSpace(ClientId)) services.Authentication.Configure(ClientId);
             await services.Store.SetSettingAsync("microsoft.clientId", ClientId.Trim(), ct);
-            await services.Store.SetSettingAsync("network.offline", Offline.ToString(), ct); Status = "Налаштування збережено.";
+            await services.Store.SetSettingAsync("network.offline", Offline.ToString(), ct); Status = TextCatalog.Get("Message010");
         });
         SignInCommand = Command(async ct =>
         {
             services.Authentication.Configure(ClientId.Trim());
-            Status = "Виконується офіційний вхід через Microsoft…";
+            Status = TextCatalog.Get("Message011");
             var session = await services.Authentication.SignInAsync(true, ct);
-            RefreshAccounts(); Status = "Ліцензію Minecraft Java Edition підтверджено.";
+            RefreshAccounts(); Status = TextCatalog.Get("Message012");
             try { await services.Skins.RefreshAsync(session.Account, ct); } catch (Exception ex) when (ex is not OperationCanceledException) { services.Log.Error("skin.download", ex); }
-            RefreshAccounts(); Status = "Ліцензію Minecraft Java Edition підтверджено.";
+            RefreshAccounts(); Status = TextCatalog.Get("Message012");
         });
-        SignOutCommand = Command(async ct => { await services.Authentication.SignOutAsync(ct); RefreshAccounts(); Status = "Збережені облікові дані видалено."; });
-        CheckCommand = Command(async ct => { Readiness = (await services.Readiness.CheckAsync(RequireProfile(), ct)).Summary; Status = "Перевірку завершено."; });
+        SignOutCommand = Command(async ct => { await services.Authentication.SignOutAsync(ct); RefreshAccounts(); Status = TextCatalog.Get("Message013"); });
+        CheckCommand = Command(async ct => { readinessReport = await services.Readiness.CheckAsync(RequireProfile(), ct); Changed(nameof(Readiness)); Status = TextCatalog.Get("Message014"); });
         InstallCommand = Command(async ct =>
         {
-            var progress = new Progress<DownloadProgress>(p => Status = $"Завантаження {p.Name}: {p.Received / 1024:N0} / {p.Total / 1024:N0} KB");
+            var progress = new Progress<DownloadProgress>(p => Status = TextCatalog.Format("DownloadProgress", p.Name, p.Received / 1024.0, p.Total / 1024.0));
             var profile = RequireProfile();
             var result = profile.Loader switch {
                 ModLoader.Fabric => await services.Fabric.InstallAsync(profile, SelectedFabricVersion?.Version, progress, ct),
                 ModLoader.Quilt => await services.Quilt.InstallAsync(profile, SelectedQuiltVersion?.Version, progress, ct),
                 _ => await services.Installer.InstallAsync(profile, progress, ct)
             };
-            if (result.Loader == ModLoader.Quilt) QuiltStatus = "Встановлено Quilt " + result.LoaderVersion;
-            if (result.Loader == ModLoader.Fabric) FabricStatus = "Встановлено Fabric " + result.LoaderVersion;
-            Status = $"Minecraft {result.Version}: перевірено {result.Files.Count} файлів. Потрібна Java {result.JavaMajor}.";
+            if (result.Loader == ModLoader.Quilt) QuiltStatus = TextCatalog.Get("Message015") + result.LoaderVersion;
+            if (result.Loader == ModLoader.Fabric) FabricStatus = TextCatalog.Get("Message016") + result.LoaderVersion;
+            Status = TextCatalog.Format("GameInstalled", result.Version, result.Files.Count, result.JavaMajor);
         });
-        LaunchCommand = Command(async ct => { Status = "Minecraft запускається. Зачекайте завершення гри, щоб редагувати профіль."; ConsoleLines.Clear(); var console = new Progress<string>(line => { ConsoleLines.Add(line); while (ConsoleLines.Count > 1000) ConsoleLines.RemoveAt(0); }); var exit = await services.Launcher.LaunchAsync(RequireProfile(), ct, console); Status = $"Minecraft завершено. Exit code: {exit}."; });
+        LaunchCommand = Command(async ct => { Status = TextCatalog.Get("Message017"); ConsoleLines.Clear(); var console = new Progress<string>(line => { ConsoleLines.Add(line); while (ConsoleLines.Count > 1000) ConsoleLines.RemoveAt(0); }); var exit = await services.Launcher.LaunchAsync(RequireProfile(), ct, console); Status = TextCatalog.Format("GameExit", exit); });
         Cart.CollectionChanged += (_, _) => { UnknownSourceAccepted = false; InvalidateModPlan(); };
         InstallCartCommand = Command(InstallCombinedAsync);
     }
@@ -143,36 +146,38 @@ public sealed partial class MainViewModel : ObservableObject
         var savedClientId = await services.Store.GetSettingAsync("microsoft.clientId", ct);
         ClientId = string.IsNullOrWhiteSpace(savedClientId) ? PTenoLauncher.Infrastructure.Authentication.LauncherMicrosoftApplication.ClientId : savedClientId;
         if (Guid.TryParse(ClientId, out var id) && id != Guid.Empty) services.Authentication.Configure(ClientId);
-        try { RefreshAccounts(); } catch (System.Security.Cryptography.CryptographicException) { Account = "Потрібен повторний офіційний вхід: токени недоступні."; }
+        try { RefreshAccounts(); } catch (System.Security.Cryptography.CryptographicException) { Account = TextCatalog.Get("Message018"); }
         await ReloadProfilesAsync(ct);
         foreach (var p in allProfiles) { try { await services.Mods.RecoverAsync(p, ct); } catch (Exception ex) when (ex is not OperationCanceledException) { services.Log.Error("mod.recovery", ex); } }
         var catalog = await services.Versions.GetCachedAsync(ct); if (catalog is not null) SetCatalog(catalog);
-        Status = "Готово. Локальні дані завантажено без мережевих запитів."; IsInitialized = true;
+        Status = TextCatalog.Get("Message019"); IsInitialized = true;
     });
     public async Task RunAsync(Func<CancellationToken, Task> action)
     {
         if (IsBusy) return;
         operation = new(); IsBusy = true; LastOperationSucceeded = false;
         try { await action(operation.Token); await ReloadHistoryAsync(); LastOperationSucceeded = true; SelectionChanged(); }
-        catch (OperationCanceledException) { Status = "Дію скасовано. Завершені файли збережено."; }
+        catch (OperationCanceledException) { Status = TextCatalog.Get("Message020"); }
         catch (Exception ex)
         {
             services.Log.Error("user.operation", ex);
-            Status = ex is Microsoft.Identity.Client.MsalException ? "Помилка Microsoft-входу. Перевірте реєстрацію застосунку та дозвіл API." : ex.Message;
+            Status = ex is PTenoLauncher.Infrastructure.Authentication.AuthenticationServiceException auth
+                ? TextCatalog.Format("AuthServiceError", auth.Host, (int)auth.StatusCode, auth.Stage)
+                : ex is Microsoft.Identity.Client.MsalException ? TextCatalog.Get("Message021") : ex.Message;
         }
         finally { IsBusy = false; operation.Dispose(); operation = null; }
     }
-    private GameProfile RequireProfile() => SelectedProfile ?? throw new InvalidOperationException("Спочатку оберіть і збережіть профіль.");
+    private GameProfile RequireProfile() => SelectedProfile ?? throw new InvalidOperationException(TextCatalog.Get("Message022"));
     private async Task SaveProfileAsync(CancellationToken ct)
     {
-        if (!int.TryParse(Memory, out var ram)) throw new ArgumentException("RAM має бути цілим числом MB.");
+        if (!int.TryParse(Memory, out var ram)) throw new ArgumentException(TextCatalog.Get("Message023"));
         if (SelectedProfile is not null && SelectedProfile.MinecraftVersion != VersionId &&
             File.Exists(services.Paths.Receipt(SelectedProfile.Id)))
-            throw new InvalidOperationException("Для іншої версії встановленої гри створіть новий профіль. Це захистить світи.");
+            throw new InvalidOperationException(TextCatalog.Get("Message024"));
         var p = new GameProfile(SelectedProfile?.Id ?? Guid.NewGuid(), ProfileName.Trim(), VersionId.Trim(), Loader,
             ram, string.IsNullOrWhiteSpace(JavaPath) ? null : JavaPath.Trim(), SelectedProfile?.CreatedAt ?? DateTimeOffset.UtcNow);
         await services.Store.SaveProfileAsync(p, ct); await ReloadProfilesAsync(ct);
-        SelectedProfile = Profiles.Single(x => x.Id == p.Id); Status = "Профіль збережено.";
+        SelectedProfile = Profiles.Single(x => x.Id == p.Id); Status = TextCatalog.Get("Message025");
     }
     private async Task ReloadProfilesAsync(CancellationToken ct)
     {
@@ -181,20 +186,20 @@ public sealed partial class MainViewModel : ObservableObject
     private void SetCatalog(VersionCatalog catalog)
     {
         currentCatalog = catalog; ApplyVersionFilter();
-        CatalogStatus = $"Кеш: {catalog.FetchedAt:yyyy-MM-dd HH:mm} UTC · останній реліз {catalog.LatestRelease} · snapshot {catalog.LatestSnapshot ?? "—"}";
+        CatalogStatus = TextCatalog.Format("CatalogSummary", catalog.FetchedAt, catalog.LatestRelease, catalog.LatestSnapshot ?? "—");
     }
     private async Task ReloadHistoryAsync()
     {
         History.Clear(); foreach (var item in await services.Store.GetHistoryAsync(SelectedProfile?.Id)) History.Add(item);
     }
-    public Task RestoreBackupAsync(string file) => RunAsync(async ct => { var p = await services.Backups.RestoreAsNewAsync(file, ct); await ReloadProfilesAsync(ct); SelectedProfile = Profiles.Single(x => x.Id == p.Id); Status = "Відновлено в новий профіль. Встановіть файли Minecraft повторно або відновіть їх зі спільного кешу."; });
+    public Task RestoreBackupAsync(string file) => RunAsync(async ct => { var p = await services.Backups.RestoreAsNewAsync(file, ct); await ReloadProfilesAsync(ct); SelectedProfile = Profiles.Single(x => x.Id == p.Id); Status = TextCatalog.Get("Message026"); });
     public Task AddModsAsync(IEnumerable<string> files) => RunAsync(async ct =>
     {
         var p = RequireProfile();
         foreach (var file in files) Cart.Add(new(file, await services.Mods.InspectAsync(file, ct)));
         CartSummary = string.Join(Environment.NewLine, Cart.Select(c =>
-            (c.Inspection.Name ?? c.Inspection.FileName) + " " + c.Inspection.Version + " · Локальний JAR · " +
-            (c.Inspection.Size / 1048576.0).ToString("0.##") + " MB; залежності: " + string.Join(", ", c.Inspection.RequiredDependencies)));
-        Status = "Локальні файли прочитано без мережі. Натисніть «Знайти залежності», щоб розрахувати спільний кошик.";
+            (c.Inspection.Name ?? c.Inspection.FileName) + " " + c.Inspection.Version + TextCatalog.Get("Message027") +
+            (c.Inspection.Size / 1048576.0).ToString("0.##") + TextCatalog.Get("Message028") + string.Join(", ", c.Inspection.RequiredDependencies)));
+        Status = TextCatalog.Get("Message029");
     });
 }

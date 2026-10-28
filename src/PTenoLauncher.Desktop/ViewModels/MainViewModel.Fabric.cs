@@ -1,3 +1,4 @@
+using PTenoLauncher.Desktop.Localization;
 using System.Collections.ObjectModel;
 using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Storage;
@@ -8,7 +9,7 @@ public sealed partial class MainViewModel
     public ObservableCollection<FabricLoaderVersion> FabricVersions { get; } = [];
     private FabricLoaderVersion? selectedFabricVersion;
     public FabricLoaderVersion? SelectedFabricVersion { get => selectedFabricVersion; set => Set(ref selectedFabricVersion, value); }
-    private const string DefaultFabricStatus = "Без вибору використовується вже встановлена або найновіша стабільна версія Fabric.";
+    private static string DefaultFabricStatus => TextCatalog.Get("Message030");
     private string fabricStatus = DefaultFabricStatus;
     public string FabricStatus { get => fabricStatus; set => Set(ref fabricStatus, value); }
     public bool IsFabricProfile => SelectedProfile is { Loader: ModLoader.Fabric };
@@ -16,7 +17,7 @@ public sealed partial class MainViewModel
     public Task LoadFabricVersionsAsync() => RunAsync(async ct =>
     {
         var profile = RequireProfile();
-        if (profile.Loader != ModLoader.Fabric) throw new InvalidOperationException("Виберіть профіль Fabric.");
+        if (profile.Loader != ModLoader.Fabric) throw new InvalidOperationException(TextCatalog.Get("Message031"));
         var versions = await services.Fabric.GetVersionsAsync(profile.MinecraftVersion, ct);
         InstallationReceipt? receipt = null;
         try { receipt = await AtomicFile.ReadJsonAsync<InstallationReceipt>(services.Paths.Receipt(profile.Id), ct); }
@@ -24,7 +25,7 @@ public sealed partial class MainViewModel
         if (SelectedProfile?.Id != profile.Id) return;
         FabricVersions.Clear(); foreach (var version in versions.OrderBy(v => v.Stable ? 0 : 1)) FabricVersions.Add(version);
         SelectedFabricVersion = FabricVersions.FirstOrDefault(v => v.Version == receipt?.LoaderVersion) ?? FabricVersions.FirstOrDefault(v => v.Stable);
-        FabricStatus = $"Версій Fabric: {FabricVersions.Count}." + (services.Fabric.UsedCachedMetadata ? " Використано кеш метаданих." : "");
-        Status = "Виберіть версію Fabric, потім натисніть «Встановити / відновити».";
+        FabricStatus = TextCatalog.Format("FabricCount", FabricVersions.Count) + (services.Fabric.UsedCachedMetadata ? TextCatalog.Get("Message032") : "");
+        Status = TextCatalog.Get("Message033");
     });
 }

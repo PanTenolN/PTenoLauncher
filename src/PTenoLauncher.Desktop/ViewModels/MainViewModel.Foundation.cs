@@ -38,7 +38,7 @@ public sealed partial class MainViewModel
         get
         {
             if (SelectedProfile is null) return "";
-            try { return $"{Directory.EnumerateFiles(Path.Combine(services.Paths.Game(SelectedProfile.Id), "mods"), "*.jar").Count()} mods"; }
+            try { return TextCatalog.Format("ModCount", Directory.EnumerateFiles(Path.Combine(services.Paths.Game(SelectedProfile.Id), "mods"), "*.jar").Count()); }
             catch (IOException) { return "mods: ?"; }
         }
     }
@@ -73,7 +73,7 @@ public sealed partial class MainViewModel
     private bool animations = true;
     public bool Animations { get => animations; set => Set(ref animations, value); }
     private UiLanguage selectedLanguage = TextCatalog.Languages[0];
-    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); Changed(nameof(PageTitle)); } } }
+    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); foreach (var name in new[] { nameof(PageTitle), nameof(ModeText), nameof(ProfileCount), nameof(Status), nameof(CatalogStatus), nameof(Readiness), nameof(CartSummary), nameof(ActiveMods), nameof(FabricStatus), nameof(QuiltStatus), nameof(RemoteSummary) }) Changed(name); if (NeedsSignIn) Account = TextCatalog.Get("Message005"); } } }
     public UiLanguage[] Languages => TextCatalog.Languages;
     private bool aiEnabled;
     public bool AiEnabled { get => aiEnabled; set { Set(ref aiEnabled, value); services.Ai.SetEnabled(value); } }
@@ -88,11 +88,11 @@ public sealed partial class MainViewModel
         var theme = CurrentTheme(); PreferencesValidation.Validate(theme); lastValidCustom = theme.Custom ?? new();
         if (Application.Current is App app) app.Appearance.Apply(theme);
     }
-    public Task SaveThemeAsync() => RunAsync(async ct => { ApplyTheme(); await services.Preferences.SetThemeAsync(CurrentTheme(), ct); Status = TextCatalog.Language == "en" ? "Theme saved." : "Тему збережено."; });
+    public Task SaveThemeAsync() => RunAsync(async ct => { ApplyTheme(); await services.Preferences.SetThemeAsync(CurrentTheme(), ct); Status = TextCatalog.Language == "en" ? "Theme saved." : TextCatalog.Get("Message034"); });
     public Task SaveLanguageAsync() => RunAsync(async ct => { await services.Store.SetSettingAsync("ui.language", SelectedLanguage.Code, ct); });
     public async Task SaveAiAsync()
     {
-        try { await services.Preferences.SetAiEnabledAsync(AiEnabled); Status = AiEnabled ? "AI: enabled; provider not configured." : "AI: вимкнено. Основні функції працюють незалежно."; }
+        try { await services.Preferences.SetAiEnabledAsync(AiEnabled); Status = AiEnabled ? TextCatalog.Get("AiEnabledStatus") : TextCatalog.Get("Message035"); }
         catch (Exception ex) { Status = ex.Message; services.Log.Error("ai.preference", ex); }
     }
     private async Task InitializeFoundationAsync(CancellationToken ct)
@@ -103,20 +103,21 @@ public sealed partial class MainViewModel
         CustomAccent = palette.Accent; CustomText = palette.Text; CustomRadius = palette.Radius; Animations = palette.Animations;
         SelectedTheme = theme.Theme; ApplyTheme();
         SelectedLanguage = Languages.FirstOrDefault(l => l.Code == awaitLanguage) ?? Languages[0];
+        TextCatalog.Apply(SelectedLanguage.Code);
         AiEnabled = await services.Preferences.GetAiEnabledAsync(ct);
     }
     private string awaitLanguage = "uk";
     public Task UnarchiveAsync() => RunAsync(async ct =>
     {
         var p = RequireProfile(); await services.Store.SaveProfileAsync(p with { Archived = false }, ct);
-        await ReloadProfilesAsync(ct); Status = "Профіль повернуто з архіву.";
+        await ReloadProfilesAsync(ct); Status = TextCatalog.Get("Message036");
     });
     public Task<ProfileDeletionPlan> GetDeletionPlanAsync(bool backups) => services.Deletion.PreviewAsync(RequireProfile().Id, backups);
     public Task DeleteApprovedAsync(ProfileDeletionPlan plan, string typedName) => RunAsync(async ct =>
     {
         var result = await services.Deletion.DeleteAsync(plan, typedName, ct);
         await ReloadProfilesAsync(ct); Page = LauncherPage.Home;
-        Status = result.CleanupPending ? "Профіль видалено; очищення тимчасових файлів буде повторено під час наступного запуску." : "Профіль остаточно видалено. Спільні компоненти збережено.";
+        Status = result.CleanupPending ? TextCatalog.Get("Message037") : TextCatalog.Get("Message038");
     });
     public Task PrepareJavaAsync() => RunAsync(async ct =>
     {
@@ -145,7 +146,7 @@ public sealed partial class MainViewModel
         var session = services.Authentication.GetCachedSession();
         Accounts.Clear(); foreach (var account in services.Authentication.GetAccounts()) Accounts.Add(account);
         SelectedAccount = Accounts.FirstOrDefault(a => a.Uuid == session?.Account.Uuid);
-        Account = session?.Account.Name ?? "Вхід не виконано"; AccountUuid = session?.Account.Uuid ?? "";
+        Account = session?.Account.Name ?? TextCatalog.Get("Message005"); AccountUuid = session?.Account.Uuid ?? "";
         var skin = session is null ? null : services.Skins.Cached(session.Account);
         try { AccountSkin = skin is null ? null : new Avalonia.Media.Imaging.Bitmap(skin); }
         catch (Exception ex) when (ex is IOException or ArgumentException) { AccountSkin = null; }

@@ -126,7 +126,8 @@ public sealed partial class MicrosoftAuthentication(SecretVault vault, HttpClien
     {
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
-            throw new AuthenticationServiceException(request.RequestUri!.Host, response.StatusCode);
+            throw new AuthenticationServiceException(request.RequestUri!.Host, response.StatusCode,
+                AuthenticationServiceException.IdentifyStage(request.RequestUri));
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var buffer = new MemoryStream(); var bytes = new byte[8192]; int n;
         while ((n = await stream.ReadAsync(bytes, ct)) > 0)

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using PTenoLauncher.Desktop.Localization;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -48,7 +49,7 @@ public sealed partial class MainWindow : Window
         if (DataContext is not MainViewModel vm || vm.IsBusy) return;
         try
         {
-            var files = await StorageProvider.OpenFilePickerAsync(new() { Title = "PTenoLauncher backup", AllowMultiple = false, FileTypeFilter = [new("Backup") { Patterns = ["*.zip"] }] });
+            var files = await StorageProvider.OpenFilePickerAsync(new() { Title = TextCatalog.Get("BackupPicker"), AllowMultiple = false, FileTypeFilter = [new(TextCatalog.Get("BackupFile")) { Patterns = ["*.zip"] }] });
             if (files.Count > 0 && files[0].TryGetLocalPath() is string path) await vm.RestoreBackupAsync(path);
         }
         catch (Exception ex) { vm.Status = ex.Message; }
@@ -58,7 +59,7 @@ public sealed partial class MainWindow : Window
         if (DataContext is not MainViewModel vm || vm.IsBusy) return;
         try
         {
-            var files = await StorageProvider.OpenFilePickerAsync(new() { Title = "Minecraft JAR", AllowMultiple = true, FileTypeFilter = [new("Mods") { Patterns = ["*.jar"] }] });
+            var files = await StorageProvider.OpenFilePickerAsync(new() { Title = TextCatalog.Get("ModsPicker"), AllowMultiple = true, FileTypeFilter = [new(TextCatalog.Get("Mods")) { Patterns = ["*.jar"] }] });
             await vm.AddModsAsync(files.Select(f => f.TryGetLocalPath()).OfType<string>());
         }
         catch (Exception ex) { vm.Status = ex.Message; }

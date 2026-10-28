@@ -1,5 +1,13 @@
 # PTenoLauncher 0.2.0 — Test Report
 
+## Localization and sign-in diagnostics - 2026-10-28
+
+Development resumed at the owner's request. Added 94 Ukrainian/English catalog messages, localized ViewModel actions/statuses, picker/dialog titles, snapshots, profile/mod counts and major readiness causes. Language switching refreshes computed labels and persisted language is explicitly applied during initialization. Original user data and game console content are not translated. Authentication failures now include a fixed enum stage; no response bodies, tokens or full URLs are logged. See docs/MICROSOFT_REVIEW_FOLLOWUP.md.
+
+Local build/test evidence is recorded in artifacts/0.2.0/localization-final-build.log, localization-tests.log and tests/localization.trx. The previous source checkpoint's Windows runner and prerelease publication both succeeded (run 40728874523, commit 92998deeb0907798a02fef7404f98c5a1e58c0a7). Actual Setup, Portable, Source ZIP and SHA256 sums are public; current localization changes require their own new build. Current installer lifecycle/gameplay remain unverified.
+
+Localization is still PARTIAL: low-level mod/security diagnostics, previously formatted dynamic messages after a live language change, theme names and exhaustive linguistic/accessibility review remain. UI-07/UI-08 must not be promoted to complete. No additional language is claimed. All 184 requirements are preserved. Microsoft review submission is owner-reported; approval remains pending. A scoped connected-mail search for PTenoLauncher or its exact Client ID returned no messages; this does not prove that no approval email exists.
+
 ## Publication verification - 2026-10-28
 
 Release build repeated successfully: 0 errors, 0 warnings (artifacts/0.2.0/github-publication-build.log). PowerShell build-script syntax passed; it now invokes the same xUnit v3 runner used locally. The full suite was repeated: 281 passed, 0 failed/errors/skipped/not-run; evidence: artifacts/0.2.0/github-publication-tests.log and tests/github-publication.trx. The new remote Windows build/prerelease workflow has not run at this documentation checkpoint; no remote Setup or release success is claimed.
@@ -145,3 +153,6 @@ Five new protocol/error cases verify exact Xbox/XSTS JSON casing and contract he
 Final source suite: **209/209 passed, 0 failed/skipped/not-run**; build **0 errors/warnings**. auth-fix-tests-direct.log and tests/auth-fix-direct.trx are authoritative. The earlier VSTest attempt aborted because its data collector could not connect in 90 seconds; it is not a failed/passing test-case run. The bundled xUnit v3 in-process runner executed the entire unchanged test selection. Initial busy-state regression evidence is retained in auth-header-initial-failure.log/trx; the corrected UI test passes in auth-header-test.log.
 
 Separate current Windows payload: artifacts/0.2.0/auth-fix-win-x64. Its native smoke uses a private empty .local/auth-fix-smoke data root and never signs in or launches Minecraft. Standard Setup/Portable packages remain the older payload until a subsequent rebuild. A compiled hotfix and simulated protocol tests do not prove the real account/API chain passes; user retest is still required.
+
+
+Final local verification for the localization/sign-in-stage block: Release build 0 errors, 0 warnings; 288/288 tests passed, no failures/errors/skips/not-run. Includes 7 new expanded cases in LocalizationTests. No real authentication/gameplay or current installer lifecycle is claimed.

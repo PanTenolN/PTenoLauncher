@@ -1,3 +1,4 @@
+using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Infrastructure.Mods;
 namespace PTenoLauncher.Desktop.ViewModels;
 public sealed partial class MainViewModel
@@ -7,6 +8,6 @@ public sealed partial class MainViewModel
     {
         await services.Mods.ConfirmBaselineAsync(RequireProfile(), preview, true, ct);
         Readiness = (await services.Readiness.CheckAsync(RequireProfile(), ct)).Summary;
-        Status = "Контрольні хеші локальних модів збережено. Це не антивірусний висновок.";
+        Status = TextCatalog.Get("Message042");
     });
 }

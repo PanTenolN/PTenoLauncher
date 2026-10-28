@@ -1,3 +1,4 @@
+using PTenoLauncher.Desktop.Localization;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using PTenoLauncher.Desktop.ViewModels;
@@ -21,7 +22,7 @@ public sealed partial class DeleteProfileDialog : Window
         {
             plan = await vm.GetDeletionPlanAsync(IncludeBackups.IsChecked == true);
             ProfileLabel.Text = plan.ProfileName;
-            SizeLabel.Text = $"{plan.Files.Count} files · {plan.TotalBytes / 1048576.0:N2} MB";
+            SizeLabel.Text = TextCatalog.Format("FilesSize", plan.Files.Count, plan.TotalBytes / 1048576.0);
             FileList.ItemsSource = plan.Files; ErrorLabel.Text = "";
         }
         catch (Exception ex) { plan = null; ErrorLabel.Text = ex.Message; }
