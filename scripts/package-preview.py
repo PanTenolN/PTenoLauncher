@@ -7,7 +7,7 @@ artifacts=root/"artifacts"
 publish=artifacts/"0.2.0"/"win-x64"
 if not (publish/"PTenoLauncher.exe").is_file():
     raise SystemExit("Publish the Windows app first.")
-for name in ("README.md","THIRD_PARTY_NOTICES.md","RELEASE_NOTES.md","TEST_REPORT.md","REQUIREMENTS_TRACEABILITY.md","MICROSOFT_AUTH_SETUP.md","SESSION_CHECKPOINT.md"):
+for name in ("README.md","THIRD_PARTY_NOTICES.md","RELEASE_NOTES.md","TEST_REPORT.md","REQUIREMENTS_TRACEABILITY.md","MICROSOFT_AUTH_SETUP.md","SESSION_CHECKPOINT.md","DEVELOPMENT_STATUS.md","PROJECT_PROGRESS_SUMMARY.md"):
     shutil.copyfile(root/name,publish/name)
 shutil.copytree(root/"docs",publish/"docs",dirs_exist_ok=True)
 version="0.2.0"
@@ -28,7 +28,7 @@ for top in ("src","tests","scripts","installer","docs",".github"):
         if path.is_file() and not any(part in ("bin","obj","__pycache__") for part in path.relative_to(root/top).parts):
             source_files.append(path)
 for top in (".gitignore",".editorconfig","global.json","Directory.Build.props","NuGet.Config","PTenoLauncher.sln",
-            "README.md","THIRD_PARTY_NOTICES.md","DEVELOPMENT_STATUS.md","TEST_REPORT.md","RELEASE_NOTES.md","REQUIREMENTS_TRACEABILITY.md","MICROSOFT_AUTH_SETUP.md","SESSION_CHECKPOINT.md"):
+            "README.md","THIRD_PARTY_NOTICES.md","DEVELOPMENT_STATUS.md","TEST_REPORT.md","RELEASE_NOTES.md","REQUIREMENTS_TRACEABILITY.md","MICROSOFT_AUTH_SETUP.md","SESSION_CHECKPOINT.md","PROJECT_PROGRESS_SUMMARY.md"):
     source_files.append(root/top)
 with zipfile.ZipFile(source.with_suffix(".zip.tmp"),"w",zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
     for path in sorted(set(source_files)): archive.write(path,path.relative_to(root).as_posix())
