@@ -3,38 +3,45 @@
 **Створено та розробляється за допомогою ШІ (OpenAI Codex).**
 **Created and developed with AI assistance (OpenAI Codex).** Requirements and development direction are set by the project owner.
 
-PTenoLauncher is an independent Minecraft Java Edition launcher project for Windows 11 x64, built with C#, .NET 10 and Avalonia UI. The current local implementation is **0.2.0 Development Preview**. This public project page describes work in progress; a production-ready release is not yet available.
+An independent Minecraft Java Edition launcher for Windows 11 x64, built with C#, .NET 10 and Avalonia UI. Current version: **0.2.0 Development Preview**. This is work in progress, not a stable release.
 
-## Purpose
+## Downloads and build status
 
-Manage isolated Minecraft profiles, prepare official Minecraft installations, manage local and catalog mods, and support offline use when the required files and a previously verified licensed account are available.
+[Development prereleases](https://github.com/PanTenolN/PTenoLauncher/releases) · [Windows build and tests](https://github.com/PanTenolN/PTenoLauncher/actions) · [Build from source](docs/BUILDING.md)
+
+The repository contains the launcher source, tests, build scripts and installer recipe. The Windows workflow is configured to publish Setup, Portable ZIP, Source ZIP and SHA256 sums as a uniquely tagged prerelease only after successful build, tests and package/startup verification. Check the individual workflow run and release assets; configuration alone is not proof of a successful remote build or upload.
+
+## Current implementation
+
+- Graphite desktop interface, five live themes and SQLite settings.
+- Isolated profiles, archive/unarchive, confirmed deletion safeguards and backups/restore.
+- Official Minecraft releases, snapshots and historical catalog; cached offline use.
+- Vanilla/Fabric/Quilt installation preparation, managed Java and verified download caches.
+- Modrinth integration, deterministic recursive dependencies independent of AI, optional components and a combined local/catalog installation cart.
+- Safe static local JAR inspection, partial Fabric/Quilt/Forge/NeoForge metadata checks, integrity baselines and transaction recovery.
+- Mods navigation hidden for Vanilla profiles; a selected-profile mods-folder button.
+- Launch process/console and official authentication code with protected local account storage. Their presence does not establish successful gameplay.
+
+The source checkpoint passed **281 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
 
 ## Microsoft / Minecraft authentication
 
-The project uses its owner's registered desktop public-client application and MSAL to sign in through the system browser. The intended official flow continues through Xbox/XSTS and Minecraft Services, checks Java Edition ownership and retrieves the Minecraft profile. Minecraft access depends on the application's permitted service access and a licensed user account.
+The launcher uses its owner's registered desktop public client, MSAL and the system browser. It does not collect Microsoft passwords, embed a client secret, borrow another launcher's application ID or bypass license checks. Windows account tokens are protected locally using DPAPI CurrentUser.
 
-The launcher does not collect Microsoft passwords, use borrowed application IDs, or offer an authentication/license bypass. Windows account tokens are stored locally using DPAPI CurrentUser protection. No client secret is embedded in the desktop application.
+The owner completed browser OAuth, but a subsequent Minecraft Services request returned HTTP 403. The owner reports submitting the AppID review request on 2026-10-28; **approval remains pending**. The reason for the 403 is not confirmed. Full licensed sign-in, entitlement/profile retrieval, refresh and actual online/offline Minecraft gameplay have **not** been verified. See [MICROSOFT_AUTH_SETUP.md](MICROSOFT_AUTH_SETUP.md).
 
-Browser OAuth has been observed working, but the current downstream Minecraft Services request returns HTTP 403. Full sign-in, token refresh and actual online/offline Minecraft gameplay have **not** been verified. This is not a claim of Microsoft or Mojang approval.
+## Languages
 
-## Current local implementation
-
-- Ukrainian/English interface, graphite styling, live themes and SQLite settings.
-- Isolated profiles, confirmed deletion safeguards and backups.
-- Official Minecraft release/snapshot catalog, Vanilla/Fabric/Quilt installation preparation, managed Java and verified local download caches.
-- Modrinth integration and deterministic dependency resolution independent of AI; local JAR inspection and transactional mod installation.
-- Static Fabric/Quilt/Forge/NeoForge metadata checks and installed-file integrity checks. Native Forge/NeoForge loader installation and complete nested-mod resolution remain pending.
-
-The latest local source build passed 281 automatic test cases with zero compilation errors/warnings. Many tests use synthetic fixtures; these results do not establish real gameplay, complete authentication, installer readiness or absolute security. Native NuGet vulnerability-audit connectivity remains unresolved.
-
-The project source and development artifacts are currently maintained locally; this repository initially serves as the public project overview. Public source/release publication is a separate step.
+**Ukrainian and English are selectable**, with live resource switching and SQLite persistence. Localization is **partial**: some diagnostics and labels remain hard-coded or do not refresh immediately. Other languages are not yet provided. See [localization status](docs/LOCALIZATION.md); no incomplete language is presented as fully supported.
 
 ## AI disclosure
 
-AI assistance in development is separate from optional AI features inside the launcher. The runtime AI switch defaults to off. An online AI assistant/translator and local AI models are not included in the current implementation. Core launcher and mod-management functionality does not depend on an AI provider.
+AI-assisted development is separate from optional AI functionality inside the launcher. The runtime AI gate defaults to off. An online AI assistant/translator is not implemented yet, and no local AI models are included. Minecraft preparation, mods and deterministic dependencies do not depend on an AI provider.
 
-## Project status
+## Known limits and next work
 
-Source review, official service access, licensed game tests, loader coverage and Windows distribution verification are ongoing. Minecraft game files and user credentials are not distributed through this repository.
+Forge/NeoForge loader installation, complete nested-mod compatibility, modpacks, server management, optional online AI, plugins and updating remain incomplete. The current installer lifecycle and licensed game tests need separate verification. Binaries are unsigned; local NuGet vulnerability-audit connectivity was blocked, and the enabled remote audit must be assessed from its actual run.
 
-This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.
+All approved requirements are retained in [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md), [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) and [docs/ROADMAP.md](docs/ROADMAP.md). Preview limitations are listed in [docs/PREVIEW_RELEASE.md](docs/PREVIEW_RELEASE.md).
+
+Minecraft game files, user worlds, private keys and account tokens are not distributed in this repository. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.

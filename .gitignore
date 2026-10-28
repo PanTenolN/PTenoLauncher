@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.tools/
+.local/
+artifacts/
+TestResults/
+*.user
+*.db*
+*.dpapi
+portable-data/

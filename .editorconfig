@@ -1,0 +1,9 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+[tests/**/*.cs]
+# Bounded local fixture tests also intentionally test cancellation with their own tokens.
+dotnet_diagnostic.xUnit1051.severity = suggestion

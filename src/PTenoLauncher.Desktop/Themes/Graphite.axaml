@@ -1,0 +1,8 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="WindowBrush">#111315</SolidColorBrush><SolidColorBrush x:Key="SidebarBrush">#191B1E</SolidColorBrush>
+  <SolidColorBrush x:Key="SurfaceBrush">#222529</SolidColorBrush><SolidColorBrush x:Key="HoverBrush">#2B2F34</SolidColorBrush>
+  <SolidColorBrush x:Key="BorderBrush">#353A40</SolidColorBrush><SolidColorBrush x:Key="TextBrush">#E5E7EB</SolidColorBrush>
+  <SolidColorBrush x:Key="SecondaryBrush">#9CA3AF</SolidColorBrush><SolidColorBrush x:Key="AccentBrush">#A3B3C7</SolidColorBrush>
+  <SolidColorBrush x:Key="AccentTextBrush">#111315</SolidColorBrush><SolidColorBrush x:Key="DangerBrush">#D88D8D</SolidColorBrush>
+  <CornerRadius x:Key="ControlRadius">6</CornerRadius>
+</ResourceDictionary>

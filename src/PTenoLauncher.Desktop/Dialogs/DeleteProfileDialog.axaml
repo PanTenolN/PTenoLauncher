@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.DeleteProfileDialog" Width="660" Height="650" MinWidth="560" MinHeight="530" Title="PTenoLauncher — Delete profile" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="26">
+    <StackPanel Spacing="10"><TextBlock Text="{DynamicResource Text.DeleteTitle}" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="{DynamicResource Text.DeleteWarning}" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"/><TextBlock Name="ProfileLabel" FontWeight="SemiBold"/></StackPanel>
+    <CheckBox Grid.Row="1" Name="IncludeBackups" Content="{DynamicResource Text.DeleteBackups}" Margin="0,14" IsCheckedChanged="OptionsChanged"/>
+    <TextBlock Grid.Row="2" Name="SizeLabel" Margin="0,0,0,10" Classes="secondary"/>
+    <ListBox Grid.Row="3" Name="FileList"><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding RelativePath}" FontSize="11" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+    <StackPanel Grid.Row="4" Spacing="8" Margin="0,16,0,0"><TextBlock Text="{DynamicResource Text.DeleteConfirm}" TextWrapping="Wrap"/><TextBox Name="ConfirmationName" TextChanged="ConfirmationChanged"/><TextBlock Name="ErrorLabel" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"/></StackPanel>
+    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,18,0,0"><Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/><Button Name="DeleteButton" Content="{DynamicResource Text.DeleteNow}" Classes="danger" Click="Confirm" IsEnabled="False"/></StackPanel>
+  </Grid>
+</Window>

@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.ProfileEditor" Title="PTenoLauncher — Profile" Width="570" Height="650" CanResize="False" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="*,Auto" Margin="26">
+    <ScrollViewer><StackPanel Spacing="16">
+      <TextBlock Text="{DynamicResource Text.EditProfile}" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,8"/>
+      <StackPanel><TextBlock Text="{DynamicResource Text.Name}" Classes="label"/><TextBox Name="ProfileNameInput" Text="{Binding ProfileName}"/></StackPanel>
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><StackPanel><TextBlock Text="{DynamicResource Text.Version}" Classes="label"/><TextBox Text="{Binding VersionId}"/></StackPanel><Button Grid.Column="1" Content="{DynamicResource Text.RefreshCatalog}" Command="{Binding RefreshVersionsCommand}" VerticalAlignment="Bottom"/></Grid>
+      <WrapPanel><CheckBox Content="Snapshots" IsChecked="{Binding ShowSnapshots}" IsCheckedChanged="FiltersChanged" Margin="0,0,18,0"/><CheckBox Content="Alpha / Beta" IsChecked="{Binding ShowHistorical}" IsCheckedChanged="FiltersChanged"/></WrapPanel><TextBlock Text="{Binding CatalogStatus}" Classes="secondary" TextWrapping="Wrap"/><ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}" HorizontalAlignment="Stretch" MaxDropDownHeight="250"/>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="16"><StackPanel><TextBlock Text="{DynamicResource Text.Loader}" Classes="label"/><ComboBox ItemsSource="{Binding Loaders}" SelectedItem="{Binding Loader}" HorizontalAlignment="Stretch"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="{DynamicResource Text.Memory}" Classes="label"/><TextBox Text="{Binding Memory}"/></StackPanel></Grid>
+      <StackPanel><TextBlock Text="{DynamicResource Text.JavaPath}" Classes="label"/><Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><TextBox Text="{Binding JavaPath}" PlaceholderText="Automatic / java.exe"/><Button Grid.Column="1" Content="{DynamicResource Text.Browse}" Click="BrowseJava"/></Grid></StackPanel>
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Classes="secondary"/>
+    </StackPanel></ScrollViewer>
+    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,18,0,0"><Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/><Button Name="SaveProfileButton" Content="{DynamicResource Text.Save}" Classes="primary" Click="Save" IsEnabled="{Binding IsIdle}"/></StackPanel>
+  </Grid>
+</Window>

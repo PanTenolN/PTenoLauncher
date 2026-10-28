@@ -1,0 +1,82 @@
+name: Windows preview build and publication
+on:
+  workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish the verified build as a development prerelease
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'scripts/**', 'installer/**', '*.props', '*.json', '*.sln', 'NuGet.Config', '.github/workflows/windows-build.yml']
+permissions:
+  contents: read
+concurrency:
+  group: windows-preview-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build, test and package
+        shell: pwsh
+        run: |
+          $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
+          ./scripts/build.ps1 -Publish -Installer
+          python scripts/package-preview.py
+          python scripts/verify-packages.py --smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PTenoLauncher-windows-preview-${{ github.sha }}
+          path: |
+            artifacts/*.exe
+            artifacts/*.zip
+            artifacts/SHA256SUMS.txt
+            artifacts/tests/*.trx
+            artifacts/0.2.0/final-artifact-verification.json
+          if-no-files-found: warn
+  publish:
+    needs: windows
+    if: github.event_name == 'push' || inputs.publish_preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: PTenoLauncher-windows-preview-${{ github.sha }}
+          path: preview
+      - name: Publish development prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PTENO_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v0.2.0-preview.${PTENO_COMMIT:0:12}"
+          # Never overwrite an existing preview or present it as a stable release.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Preview already exists: $tag"
+            exit 0
+          fi
+          gh release create "$tag" \
+            preview/PTenoLauncher-Setup-0.2.0-win-x64.exe \
+            preview/PTenoLauncher-Portable-0.2.0-win-x64.zip \
+            preview/PTenoLauncher-Source-0.2.0.zip \
+            preview/SHA256SUMS.txt \
+            --target "$PTENO_COMMIT" --prerelease --latest=false \
+            --title "PTenoLauncher 0.2.0 Development Preview (${PTENO_COMMIT:0:12})" \
+            --notes-file docs/PREVIEW_RELEASE.md

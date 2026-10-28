@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.ModBaselineDialog" Title="{DynamicResource Text.ModBaselineTitle}" Width="760" Height="620" MinWidth="570" MinHeight="460" WindowStartupLocation="CenterOwner" Background="{DynamicResource WindowBrush}">
+  <Grid Margin="24" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" RowSpacing="14">
+    <TextBlock Name="ProfileLabel" TextWrapping="Wrap" FontSize="21" FontWeight="SemiBold"/>
+    <TextBlock Grid.Row="1" Text="{DynamicResource Text.ModBaselineHint}" TextWrapping="Wrap"/>
+    <TextBox Grid.Row="2" Name="FileList" Background="{DynamicResource SurfaceBrush}" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap"/>
+    <TextBlock Grid.Row="3" Name="ErrorLabel" TextWrapping="Wrap"/>
+    <CheckBox Grid.Row="4" Name="Acceptance" Content="{DynamicResource Text.ModBaselineAccept}" IsCheckedChanged="AcceptanceChanged"/>
+    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+      <Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/>
+      <Button Name="ConfirmButton" Content="{DynamicResource Text.ModBaselineConfirm}" Click="Confirm" IsEnabled="False"/>
+    </StackPanel>
+  </Grid>
+</Window>
