@@ -37,6 +37,12 @@ public sealed partial class MainWindow : Window
         if (DataContext is MainViewModel { SelectedProfile: not null, IsBusy: false } vm) await new DeleteProfileDialog(vm).ShowDialog<bool>(this);
     }
     private async void AutoJava(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.PrepareJavaAsync(); }
+    private async void StopGame(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm || vm.GameLaunchId is not Guid launchId) return;
+        var confirmed = await new StopGameDialog().ShowDialog<bool>(this);
+        await vm.StopGameAsync(launchId, confirmed);
+    }
     private async void Unarchive(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.UnarchiveAsync(); }
     private async void ThemeChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true } vm) await vm.SaveThemeAsync(); }
     private async void LanguageChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true } vm) await vm.SaveLanguageAsync(); }

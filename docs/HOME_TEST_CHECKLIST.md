@@ -88,3 +88,7 @@ PTenoLauncher-Setup-0.2.0-win-x64.exe створено, але повний жи
 ## Додаткова перевірка Quilt після основних сценаріїв
 
 У новому окремому профілі PTeno-Test-Quilt вибери Minecraft 1.21.1 / Quilt, на Головній відкрий Версії Quilt, залиш релізну версію або вибери її явно й натисни Встановити / відновити. Перевір Java та готовність. Реальний запуск спочатку перевіряй без модів, лише після офіційного входу. Підтримка повних метаданих і залежностей Quilt-модів ще не реалізована; наявність встановленого Loader не підтверджує підтримку будь-якої Quilt-збірки. Не переносити важливі світи чи Fabric-моди в цей тест.
+
+## Process lifecycle manual acceptance - NOT RUN
+
+After licensed sign-in succeeds, use a new disposable profile/test world. Save and exit normally first; reopen it and verify the save. To test forced Stop Minecraft, save the disposable world beforehand, then use Home or Settings / Game console. Cancel the dialog first and verify the game stays open. Reopen it, read the unsaved-data warning, tick explicit acceptance and confirm. Verify the owned game process exits, the launcher becomes idle, exit information remains in the log and a subsequent authorized launch works. Do not use a real/personal world. A dialog belonging to a finished launch must not stop another operation. This new test remains NOT RUN until observed; automated process fixtures are separate evidence.

@@ -1,5 +1,25 @@
 # Resume checkpoint — PTenoLauncher 0.2.0
 
+## Critical stabilization: process lifecycle - 2026-10-28
+
+Resumed from release source aec1846517865a0953b1037bd6b55f8ce8807efc and main documentation commit 4374db9f44bacb2fac2960b2f01a63d532b7e603; verified Windows CI 40759155278 remains the prior binary checkpoint. Local workspace is a source mirror without .git; remote main/history was checked before edits. Existing architecture and newer localization/AI work were preserved.
+
+Fixed post-start process cancellation, process-tree cleanup, bounded inherited-console draining and cleanup after console-consumer failure. Added a default-cancel confirmation dialog, explicit unsaved-world acknowledgement and per-launch-ID stop guard. Generic operation cancellation cannot silently kill a running game. See docs/PROCESS_LIFECYCLE.md for exact behavior and limits.
+
+Release build: **0 errors, 0 warnings**. Full suite: **330/330 passed**, no failed/errors/skipped/not-run, including 10 new process/UI cases. Evidence: artifacts/0.2.0/critical-process-final-build.log, critical-process-tests.log and tests/critical-process.trx. Real existing Java 21 x64 probe returned 0 for -version and 1 for an intentionally invalid JVM option, with zero HTTP requests (critical-java-process.log). This was not a Minecraft session.
+
+PROJECT_PROGRESS_SUMMARY.md now gives module-specific grades and evidence using the owner's 0/25/50/75/100 scale. The complete new brief is docs/DEVELOPMENT_BRIEF_2026-10-28.md; the auth setup document is MICROSOFT_AUTH_SETUP.md at repository root. All 184 original requirement IDs are retained, with four explicit additions. Sinytra, Kilt and all listed cross-loader bridges are DEFERRED; no implementation work is authorized for them now. scripts/verify-requirements.py checks the retained IDs/statuses/grades in CI.
+
+Actual Microsoft entitlement/profile/refresh and licensed Vanilla/Fabric/Quilt gameplay remain BLOCKED/NOT RUN. Real AI/provider quality and current installer lifecycle remain unverified. Do not retry the blocked registry guard or present synthetic process tests as gameplay. Continue the independent P0 Java 8/17/21/25 matrix, runtime receipt/path checks and historical assets/arguments; use docs/HOME_TEST_CHECKLIST.md when licensed authentication is available. New source commit, CI and actual published artifacts are recorded in docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md; until verified, use the prior release rather than claiming new binaries exist.
+
+## Latest verified return point - 2026-10-28
+
+Resume from release source aec1846517865a0953b1037bd6b55f8ce8807efc and the final evidence in docs/ONLINE_AI_RELEASE_CHECKPOINT.md. Its original GitHub documentation commit is 4374db9f44bacb2fac2960b2f01a63d532b7e603. The missing final-release checkpoint has now been restored locally; workspace read/write access worked during this documentation handoff. Historical entries below that await final CI/publication are superseded.
+
+Verified Windows workflow: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40759155278 . Release build 0 errors/warnings; 320/320 tests pass; ZIP integrity and freshly extracted Portable startup pass. Actual Setup/Portable/Source/checksums: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.0-preview.aec184651786 . No new code, build, gameplay or live-provider test was performed during this handoff.
+
+Preserve existing eight-language catalogs, optional AI policies/consent and translation drafts, profiles, installed-mod metadata and all 184 traceability requirements. Continue remaining low-level localization and independent roadmap work without recreating the project. Microsoft approval/real sign-in and gameplay, live OpenAI quality, resource-pack activation and latest installer lifecycle still require verification. Keep the prior installer ownership guard intact; never bypass authentication or licensing.
+
 ## Final Java-format guard - 2026-10-28
 
 Added a regression guard against reordering unnumbered Java printf placeholders (for example %s then %d). Numbered placeholders can still be reordered safely. Final local verification: **320/320 tests passed**, zero failures/errors/skips/not-run; Release build 0 errors/warnings. Evidence: artifacts/0.2.0/online-ai-placeholder-build.log; online-ai-placeholder-tests.log; tests/online-ai-placeholder.trx. Prior 319-case checkpoint/native publish and GitHub run 40758215281 succeeded; the new guard requires its own subsequent CI/prerelease. No real OpenAI/Minecraft or installer-lifecycle test is claimed.
@@ -138,3 +158,6 @@ Native online-AI checkpoint: self-contained win-x64 publish PASS (online-ai-publ
 
 
 Published recovered eight-language/online-AI source: commit 6337ef265bf342e4e137000a975f6256190e5adf; tree b626e88a5661692d485eef28bf353fbeb958a836. 319 tests pass, native startup passes. New CI/prerelease awaits inspection. Live provider and Minecraft tests remain unverified; see docs/ONLINE_AI.md. No real key or account token used.
+
+
+Final AI placeholder guard published: aec1846517865a0953b1037bd6b55f8ce8807efc, 320 passing tests. Previous AI/eight-language release 6337ef265bf3 actually exists with Setup/Portable/Source/hashes. Inspect final commit CI before claiming its binary release. Live OpenAI and licensed Minecraft remain unverified; no secrets were used.

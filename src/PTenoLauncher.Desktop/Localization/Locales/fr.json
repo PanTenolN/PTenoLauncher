@@ -1,4 +1,7 @@
 {
+  "StopGame": "Arrêter Minecraft",
+  "StopWarning": "Si possible, ferme Minecraft depuis le menu du jeu. L’arrêt forcé termine le jeu et ses processus enfants et peut entraîner la perte des modifications du monde non enregistrées.",
+  "StopAccept": "Je comprends que les modifications non enregistrées peuvent être perdues",
   "Files": "Fichiers",
   "Bytes": "octets",
   "ModBaselineTitle": "Vérifier les mods locaux…",

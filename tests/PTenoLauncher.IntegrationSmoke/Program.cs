@@ -11,6 +11,26 @@ var denyNetwork = args.Length > 1 && (args[1] is "--mods-offline" or "--local-de
 using var http = denyNetwork is null ? NetworkPolicy.CreateHttpClient() : new HttpClient(denyNetwork);
 var network = new NetworkPolicy(); var downloader = new VerifiedDownloader(http, network);
 var versions = new VersionManager(paths, downloader);
+if (args.Length > 2 && args[1] == "--java-process-check")
+{
+    // Explicit opt-in probe of an existing runtime; no account, game or network request.
+    network.Offline = true;
+    var runtime = await new JavaManager().InspectAsync(Path.GetFullPath(args[2]));
+    if (!runtime.Is64Bit || !JavaRuntimeManager.IsX64Executable(runtime.Path)) throw new InvalidDataException("Expected x64 Java.");
+    var executable = new System.Diagnostics.ProcessStartInfo(runtime.Path);
+    executable.ArgumentList.Add("-version");
+    var code = await PTenoLauncher.Infrastructure.Diagnostics.LiveProcessRunner.RunAsync(executable,
+        SafePath.Join(paths.Root, "java-version-" + Guid.NewGuid().ToString("N") + ".log"));
+    var invalid = new System.Diagnostics.ProcessStartInfo(runtime.Path);
+    invalid.ArgumentList.Add("-XX:PTenoSyntheticInvalidOption");
+    var failed = await PTenoLauncher.Infrastructure.Diagnostics.LiveProcessRunner.RunAsync(invalid,
+        SafePath.Join(paths.Root, "java-invalid-option-" + Guid.NewGuid().ToString("N") + ".log"));
+    if (code != 0 || failed == 0) throw new InvalidDataException("Unexpected Java exit codes.");
+    var result = new { check = "real-java-process", java = runtime.Major, x64 = true, versionExit = code,
+        invalidArgumentExit = failed, networkRequests = 0, gameLaunched = false, authenticationBypassed = false };
+    await AtomicFile.WriteJsonAsync(SafePath.Join(paths.Root, "java-process-result.json"), result);
+    Console.WriteLine(JsonSerializer.Serialize(result, AtomicFile.JsonOptions)); return;
+}
 if (args.Length > 1 && args[1] == "--quilt-mod-inspection")
 {
     // One real public mod artifact in an explicitly isolated directory; no account/game execution.

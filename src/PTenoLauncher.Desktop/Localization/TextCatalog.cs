@@ -10,6 +10,9 @@ public static partial class TextCatalog
     public static string Language { get; private set; } = "uk";
     private static readonly Dictionary<string,(string Uk,string En)> Texts = new()
     {
+        ["StopGame"]=("Зупинити Minecraft", "Stop Minecraft"),
+        ["StopWarning"]=("За можливості закрий Minecraft через меню гри. Примусова зупинка завершує процес гри та його дочірні процеси й може призвести до втрати незбережених змін у світі.", "Close Minecraft through its game menu whenever possible. Forcing a stop ends the game and its child processes and may lose unsaved world changes."),
+        ["StopAccept"]=("Я розумію ризик втрати незбережених змін", "I understand that unsaved changes may be lost"),
         ["Files"]=("Файлів", "Files"), ["Bytes"]=("байт", "bytes"),
         ["ModBaselineTitle"]=("Перевірити локальні моди…", "Review local mods…"),
         ["ModBaselineHint"]=("Перегляньте всі поточні JAR, їхній розмір і SHA-256. Підтвердження зберігає контрольні хеші для виявлення майбутніх змін. Воно не підтверджує безпечність файлів і не замінює антивірус. Файли модів і світи не змінюються.", "Review the current JAR files, sizes and SHA-256 hashes. Confirmation records a baseline for detecting future changes. It does not establish file safety or replace antivirus scanning. Mod files and worlds are not changed."),

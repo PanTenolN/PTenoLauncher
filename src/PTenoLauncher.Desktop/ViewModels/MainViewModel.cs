@@ -66,7 +66,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool offline;
     public bool Offline { get => offline; set { Set(ref offline, value); services.Network.Offline = value; Changed(nameof(ModeText)); } }
     private bool busy;
-    public bool IsBusy { get => busy; private set { Set(ref busy, value); Changed(nameof(IsIdle)); foreach (var command in commands) command.Refresh(); CancelCommand.Refresh(); } }
+    public bool IsBusy { get => busy; private set { Set(ref busy, value); Changed(nameof(IsIdle)); Changed(nameof(CanCancelOperation)); foreach (var command in commands) command.Refresh(); CancelCommand.Refresh(); } }
     public bool IsIdle => !IsBusy;
     public string ModeText => Offline ? TextCatalog.Get("Message001") : TextCatalog.Get("Message002");
     public string ProfileCount => TextCatalog.Format("ProfileCount", Profiles.Count);
@@ -92,7 +92,7 @@ public sealed partial class MainViewModel : ObservableObject
             var command = new AsyncCommand(() => RunAsync(action), () => !IsBusy);
             commands.Add(command); return command;
         }
-        CancelCommand = new(() => { operation?.Cancel(); return Task.CompletedTask; }, () => IsBusy);
+        CancelCommand = new(async () => { if (operation is not null) await operation.CancelAsync(); }, () => CanCancelOperation);
         SaveCommand = Command(SaveProfileAsync);
         BackupCommand = Command(async ct => { var file = await services.Backups.CreateAsync(RequireProfile(), ct); Status = TextCatalog.Get("Message007") + file; });
         NewCommand = Command(_ => { SelectedProfile = null; ProfileName = ""; VersionId = SelectedVersion?.Id ?? ""; Loader = ModLoader.Vanilla; Memory = "4096"; JavaPath = ""; return Task.CompletedTask; });
@@ -132,7 +132,18 @@ public sealed partial class MainViewModel : ObservableObject
             if (result.Loader == ModLoader.Fabric) FabricStatus = TextCatalog.Get("Message016") + result.LoaderVersion;
             Status = TextCatalog.Format("GameInstalled", result.Version, result.Files.Count, result.JavaMajor);
         });
-        LaunchCommand = Command(async ct => { Status = TextCatalog.Get("Message017"); ConsoleLines.Clear(); var console = new Progress<string>(line => { ConsoleLines.Add(line); while (ConsoleLines.Count > 1000) ConsoleLines.RemoveAt(0); }); var exit = await services.Launcher.LaunchAsync(RequireProfile(), ct, console); Status = TextCatalog.Format("GameExit", exit); });
+        LaunchCommand = Command(async ct =>
+        {
+            SetGameLaunch(Guid.NewGuid());
+            try
+            {
+                Status = TextCatalog.Get("Message017"); ConsoleLines.Clear();
+                var console = new Progress<string>(line => { ConsoleLines.Add(line); while (ConsoleLines.Count > 1000) ConsoleLines.RemoveAt(0); });
+                var exit = await services.Launcher.LaunchAsync(RequireProfile(), ct, console);
+                Status = TextCatalog.Format("GameExit", exit);
+            }
+            finally { SetGameLaunch(null); }
+        });
         Cart.CollectionChanged += (_, _) => { UnknownSourceAccepted = false; InvalidateModPlan(); };
         InstallCartCommand = Command(InstallCombinedAsync);
     }

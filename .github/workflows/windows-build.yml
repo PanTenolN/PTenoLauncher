@@ -30,6 +30,7 @@ jobs:
         run: |
           $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
           ./scripts/build.ps1 -Publish -Installer
+          python scripts/verify-requirements.py
           python scripts/package-preview.py
           python scripts/verify-packages.py --smoke
       - uses: actions/upload-artifact@v4

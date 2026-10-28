@@ -1,21 +1,16 @@
+# PTenoLauncher 0.2.0 Development Preview
+
+**Створено та розробляється за допомогою ШІ (OpenAI Codex).**
 **Created and developed with AI assistance (OpenAI Codex).**
 
-This is a Windows 11 x64 development preview, not a stable release.
+This preview fixes cancellation after a game process starts, cleans up owned subprocesses after cancellation or console errors, and bounds inherited-console draining. Home and Game console now expose Stop Minecraft with a default-cancel dialog, explicit acknowledgement of possible unsaved-world loss and a stale-launch confirmation guard. Prefer closing the game through its menu.
 
-The build is published only after the Windows runner completes locked dependency restore, Release build, all automatic tests, self-contained publication, Inno Setup compilation, archive/hash checks and an isolated Portable startup smoke test. See the workflow run and its TRX/verification artifacts for the exact results. These checks do not establish Minecraft gameplay or installer lifecycle correctness.
+Retains eight UI languages, profiles/themes/SQLite, Vanilla/Fabric/Quilt preparation, verified Java downloads, deterministic Modrinth/local-mod dependencies, safe profile deletion/backups and optional OpenAI assistant/translation workflows. Core features remain independent of AI. The new progress report grades 43 modules and retains all 184 original requirements plus four explicit additions; Sinytra, Kilt and cross-loader bridges are deferred.
 
-- **Setup EXE:** installs the self-contained launcher for the current user. The current installer lifecycle/upgrade/uninstall and interactive Windows 11 checks remain unverified. Prior local lifecycle evidence applies to an older payload.
-- **Portable ZIP:** extract all files together, then start PTenoLauncher.exe. No separately installed .NET runtime is required. Keep portable-data private.
-- **Source ZIP:** application source, tests, build scripts and documentation.
-- **SHA256SUMS.txt:** hashes for the generated packages and executable.
+Local Release build: zero errors/warnings; 330 tests passed. A real existing Java 21 x64 process returned the expected version/error exit codes with no network or game launch. Each published preview is gated by its own Windows build/tests/installer compilation/ZIP verification and extracted Portable startup.
 
-Known limits:
+Microsoft application approval and full entitlement/profile/refresh, licensed Minecraft gameplay/world saves and real-game stopping remain unverified. Live paid OpenAI requests/translation quality, translation-pack activation, Java 8/17/25 matrix and the latest installer installation/upgrade/uninstall lifecycle also remain unverified. Technical localization and some loader/legacy formats are partial. Binaries are unsigned. This is not a stable release.
 
-- Microsoft browser OAuth has completed in the owner's test, but the subsequent Minecraft Services request returned HTTP 403. The owner reports submitting the AppID review request; approval remains pending. Full licensed sign-in, refresh, entitlement/profile retrieval and actual online/offline Minecraft gameplay have not been verified.
-- Application and installer are unsigned. The pipeline does not test signing or circumvent Windows security prompts.
-- Eight interface languages are selectable (Ukrainian, English, Polish, German, Spanish, French, Brazilian Portuguese, Russian), with 230 validated UI keys each. Low-level diagnostic/local linguistic review remains partial.
-- Forge/NeoForge native mod metadata is partially supported; their loader installation and full nested-mod resolution remain incomplete.
-- Optional OpenAI assistant/log analysis and modern JAR-JSON translation/editor/incremental resource-pack export are implemented. Your own API key/model and paid-transfer confirmation are required; live API quality and in-game pack activation are unverified. Legacy/nested mod language formats remain unsupported. AI defaults off, no local model is included. See docs/ONLINE_AI.md. Server manager, modpacks and other roadmap items remain unfinished.
-- NuGet auditing is enabled in the build. Inspect the individual run for restore/audit failures or warnings; a passing build is not a claim of absolute security.
+Artifacts: self-contained Windows x64 Setup EXE, Portable ZIP, source ZIP and SHA256SUMS. Do not include Minecraft binaries, worlds or credentials. Installer lifecycle is not established by compiling an EXE.
 
-Minecraft binaries, Microsoft tokens, user worlds and private API keys are not included. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.
+See PROJECT_PROGRESS_SUMMARY.md, docs/PROCESS_LIFECYCLE.md, docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md and docs/HOME_TEST_CHECKLIST.md for evidence, limits and continuation.

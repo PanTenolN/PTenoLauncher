@@ -36,7 +36,7 @@
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8"><TextBlock Text="{Binding ActiveName}" FontSize="26" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding ActiveVersion}" Classes="secondary"/><TextBlock Text="{Binding ActiveMods}" IsVisible="{Binding CanManageMods}" Classes="secondary"/></StackPanel>
                     <Button Grid.Column="2" Content="⋯" Click="EditProfile" VerticalAlignment="Top" ToolTip.Tip="{DynamicResource Text.EditProfile}"/>
                   </Grid>
-                  <WrapPanel><Button Name="PlayButton" Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" MinWidth="150" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.EditProfile}" Click="EditProfile" Margin="0,0,0,8"/></WrapPanel>
+                  <WrapPanel><Button Name="PlayButton" Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" MinWidth="150" Margin="0,0,10,8"/><Button Name="StopGameButton" Content="{DynamicResource Text.StopGame}" Click="StopGame" IsVisible="{Binding IsGameLaunchActive}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.EditProfile}" Click="EditProfile" Margin="0,0,0,8"/></WrapPanel>
                 </StackPanel>
               </Border>
               <Border Name="FabricLoaderPanel" Classes="card" IsVisible="{Binding IsFabricProfile}"><StackPanel Spacing="12">
@@ -134,11 +134,11 @@
               <Button Content="{DynamicResource Text.AiExport}" Click="ExportTranslationPack" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="{DynamicResource Text.History}"><ListBox ItemsSource="{Binding History}" Margin="0,18,0,0"><ListBox.ItemTemplate><DataTemplate><StackPanel Spacing="5" Margin="10"><TextBlock Text="{Binding Action}" FontWeight="SemiBold"/><TextBlock Text="{Binding Details}" TextWrapping="Wrap"/><TextBlock Text="{Binding At}" Classes="secondary" FontSize="10"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox></TabItem>
-            <TabItem Header="{DynamicResource Text.Console}"><ListBox ItemsSource="{Binding ConsoleLines}" FontFamily="Consolas" FontSize="11" Margin="0,18,0,0"/></TabItem>
+            <TabItem Header="{DynamicResource Text.Console}"><Grid RowDefinitions="Auto,*" Margin="0,18,0,0"><Button Name="ConsoleStopGameButton" Content="{DynamicResource Text.StopGame}" Click="StopGame" IsVisible="{Binding IsGameLaunchActive}" HorizontalAlignment="Left" Margin="0,0,0,12"/><ListBox Grid.Row="1" ItemsSource="{Binding ConsoleLines}" FontFamily="Consolas" FontSize="11"/></Grid></TabItem>
           </TabControl>
         </Panel>
       </Grid>
     </Grid>
-    <Border Grid.Row="1" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,10"><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto"><TextBlock Name="StatusText" Text="{Binding Status}" Classes="secondary" TextWrapping="Wrap" MaxHeight="58"/><Button Grid.Column="1" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding IsBusy}" Padding="10,4" Margin="12,0,0,0"/><ProgressBar Grid.Row="1" Grid.ColumnSpan="2" IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="2" Margin="0,8,0,0"/></Grid></Border>
+    <Border Grid.Row="1" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,10"><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto"><TextBlock Name="StatusText" Text="{Binding Status}" Classes="secondary" TextWrapping="Wrap" MaxHeight="58"/><Button Grid.Column="1" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}" Padding="10,4" Margin="12,0,0,0"/><ProgressBar Grid.Row="1" Grid.ColumnSpan="2" IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="2" Margin="0,8,0,0"/></Grid></Border>
   </Grid>
 </Window>

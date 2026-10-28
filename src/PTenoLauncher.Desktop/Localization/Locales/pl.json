@@ -1,4 +1,7 @@
 {
+  "StopGame": "Zatrzymaj Minecraft",
+  "StopWarning": "Jeśli to możliwe, zamknij Minecraft z menu gry. Wymuszone zatrzymanie kończy grę i jej procesy potomne oraz może spowodować utratę niezapisanych zmian w świecie.",
+  "StopAccept": "Rozumiem ryzyko utraty niezapisanych zmian",
   "Files": "Pliki",
   "Bytes": "bajty",
   "ModBaselineTitle": "Sprawdź lokalne mody…",

@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.StopGameDialog" Title="{DynamicResource Text.StopGame}"
+        Width="520" SizeToContent="Height" CanResize="False" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="24" Spacing="18">
+    <TextBlock Text="{DynamicResource Text.StopWarning}" TextWrapping="Wrap"/>
+    <CheckBox Name="StopAcceptance" Click="AcceptanceChanged" HorizontalAlignment="Stretch"><TextBlock Text="{DynamicResource Text.StopAccept}" TextWrapping="Wrap"/></CheckBox>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+      <Button Name="CancelStopButton" Content="{DynamicResource Text.Cancel}" IsDefault="True" IsCancel="True" Click="Cancel"/>
+      <Button Name="ConfirmStopButton" Content="{DynamicResource Text.StopGame}" IsEnabled="False" Click="Confirm"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

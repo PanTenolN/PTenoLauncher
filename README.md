@@ -45,3 +45,5 @@ Forge/NeoForge loader installation, complete nested-mod compatibility, modpacks,
 All approved requirements are retained in [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md), [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) and [docs/ROADMAP.md](docs/ROADMAP.md). Preview limitations are listed in [docs/PREVIEW_RELEASE.md](docs/PREVIEW_RELEASE.md).
 
 Minecraft game files, user worlds, private keys and account tokens are not distributed in this repository. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.
+
+Current module readiness: [PROJECT_PROGRESS_SUMMARY.md](PROJECT_PROGRESS_SUMMARY.md). Latest process-lifecycle evidence and continuation: [docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md](docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md).

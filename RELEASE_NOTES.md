@@ -1,5 +1,17 @@
 # 0.2.0 — Development Preview
 
+## Critical stabilization: process lifecycle - 2026-10-28
+
+Resumed from release source aec1846517865a0953b1037bd6b55f8ce8807efc and main documentation commit 4374db9f44bacb2fac2960b2f01a63d532b7e603; verified Windows CI 40759155278 remains the prior binary checkpoint. Local workspace is a source mirror without .git; remote main/history was checked before edits. Existing architecture and newer localization/AI work were preserved.
+
+Fixed post-start process cancellation, process-tree cleanup, bounded inherited-console draining and cleanup after console-consumer failure. Added a default-cancel confirmation dialog, explicit unsaved-world acknowledgement and per-launch-ID stop guard. Generic operation cancellation cannot silently kill a running game. See docs/PROCESS_LIFECYCLE.md for exact behavior and limits.
+
+Release build: **0 errors, 0 warnings**. Full suite: **330/330 passed**, no failed/errors/skipped/not-run, including 10 new process/UI cases. Evidence: artifacts/0.2.0/critical-process-final-build.log, critical-process-tests.log and tests/critical-process.trx. Real existing Java 21 x64 probe returned 0 for -version and 1 for an intentionally invalid JVM option, with zero HTTP requests (critical-java-process.log). This was not a Minecraft session.
+
+PROJECT_PROGRESS_SUMMARY.md now gives module-specific grades and evidence using the owner's 0/25/50/75/100 scale. The complete new brief is docs/DEVELOPMENT_BRIEF_2026-10-28.md; the auth setup document is MICROSOFT_AUTH_SETUP.md at repository root. All 184 original requirement IDs are retained, with four explicit additions. Sinytra, Kilt and all listed cross-loader bridges are DEFERRED; no implementation work is authorized for them now. scripts/verify-requirements.py checks the retained IDs/statuses/grades in CI.
+
+Actual Microsoft entitlement/profile/refresh and licensed Vanilla/Fabric/Quilt gameplay remain BLOCKED/NOT RUN. Real AI/provider quality and current installer lifecycle remain unverified. Do not retry the blocked registry guard or present synthetic process tests as gameplay. Continue the independent P0 Java 8/17/21/25 matrix, runtime receipt/path checks and historical assets/arguments; use docs/HOME_TEST_CHECKLIST.md when licensed authentication is available. New source commit, CI and actual published artifacts are recorded in docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md; until verified, use the prior release rather than claiming new binaries exist.
+
 ## Eight languages and optional online AI - 2026-10-28
 
 Development resumed and the interrupted eight-language block was recovered. Eight selectable offline UI catalogs (uk/en/pl/de/es/fr/pt-BR/ru) now cover 230 keys each, including AI controls and major offline readiness findings. Catalog completeness/format validation, actual picker switching and SQLite reload pass. Low-level mod/security diagnostics, some already-formatted live statuses and native-speaker/DPI review remain incomplete; this is not full application-wide localization.

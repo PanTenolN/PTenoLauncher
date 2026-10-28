@@ -1,5 +1,17 @@
 # PTenoLauncher Roadmap
 
+## Critical stabilization: process lifecycle - 2026-10-28
+
+Resumed from release source aec1846517865a0953b1037bd6b55f8ce8807efc and main documentation commit 4374db9f44bacb2fac2960b2f01a63d532b7e603; verified Windows CI 40759155278 remains the prior binary checkpoint. Local workspace is a source mirror without .git; remote main/history was checked before edits. Existing architecture and newer localization/AI work were preserved.
+
+Fixed post-start process cancellation, process-tree cleanup, bounded inherited-console draining and cleanup after console-consumer failure. Added a default-cancel confirmation dialog, explicit unsaved-world acknowledgement and per-launch-ID stop guard. Generic operation cancellation cannot silently kill a running game. See docs/PROCESS_LIFECYCLE.md for exact behavior and limits.
+
+Release build: **0 errors, 0 warnings**. Full suite: **330/330 passed**, no failed/errors/skipped/not-run, including 10 new process/UI cases. Evidence: artifacts/0.2.0/critical-process-final-build.log, critical-process-tests.log and tests/critical-process.trx. Real existing Java 21 x64 probe returned 0 for -version and 1 for an intentionally invalid JVM option, with zero HTTP requests (critical-java-process.log). This was not a Minecraft session.
+
+PROJECT_PROGRESS_SUMMARY.md now gives module-specific grades and evidence using the owner's 0/25/50/75/100 scale. The complete new brief is docs/DEVELOPMENT_BRIEF_2026-10-28.md; the auth setup document is MICROSOFT_AUTH_SETUP.md at repository root. All 184 original requirement IDs are retained, with four explicit additions. Sinytra, Kilt and all listed cross-loader bridges are DEFERRED; no implementation work is authorized for them now. scripts/verify-requirements.py checks the retained IDs/statuses/grades in CI.
+
+Actual Microsoft entitlement/profile/refresh and licensed Vanilla/Fabric/Quilt gameplay remain BLOCKED/NOT RUN. Real AI/provider quality and current installer lifecycle remain unverified. Do not retry the blocked registry guard or present synthetic process tests as gameplay. Continue the independent P0 Java 8/17/21/25 matrix, runtime receipt/path checks and historical assets/arguments; use docs/HOME_TEST_CHECKLIST.md when licensed authentication is available. New source commit, CI and actual published artifacts are recorded in docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md; until verified, use the prior release rather than claiming new binaries exist.
+
 ## Final Java-format guard - 2026-10-28
 
 Added a regression guard against reordering unnumbered Java printf placeholders (for example %s then %d). Numbered placeholders can still be reordered safely. Final local verification: **320/320 tests passed**, zero failures/errors/skips/not-run; Release build 0 errors/warnings. Evidence: artifacts/0.2.0/online-ai-placeholder-build.log; online-ai-placeholder-tests.log; tests/online-ai-placeholder.trx. Prior 319-case checkpoint/native publish and GitHub run 40758215281 succeeded; the new guard requires its own subsequent CI/prerelease. No real OpenAI/Minecraft or installer-lifecycle test is claimed.
@@ -76,3 +88,15 @@ Forge/NeoForge native root TOML metadata is partially implemented: multi-mod JAR
 Forge/NeoForge loader installation, Jar-in-Jar selection, Maven qualifier ordering and real mod/game integration remain pending. NeoForge FML version is independently versioned and remains Unknown until actual installer metadata is available; it is never inferred from the NeoForge version. Unsupported metadata cannot establish Ready.
 
 Resume from this source checkpoint. Next independent work: actual Forge/NeoForge installer/catalog and FML metadata, complete nested candidate handling, then the retained roadmap. Microsoft Services HTTP 403/manual licensed gameplay remains external. Preserve all 184 requirements; do not recreate the project, bypass auth, use real worlds or retry the blocked installer registry guard.
+
+## Current owner priority order (supersedes historical ordering above)
+
+1. P0: auth diagnostics/official review, launch engine, Java 8/17/21/25, licensed Vanilla/Fabric/Quilt tests and isolated installer lifecycle. Continue independent Java/asset/argument work while approval is external.
+2. Forge and NeoForge official catalogs/installers and separate FML metadata; Quilt nested/conditional improvements; Fabric final integration.
+3. Modrinth/allowed CurseForge, unified deterministic dependencies, updates/locking/cart/recovery.
+4. Modpacks/import/export/friend comparison; worlds/resourcepacks/shaders/backups/storage.
+5. Security scanner, conflict finder in authorized isolated copies, downloads queue/resume and performance.
+6. Optional live AI/legacy and nested translations, version-aware pack format; server cores including Paper/Purpur, supported Porthole/manual Aternos; isolated plugins and authenticated updater.
+7. Full eight-language localization/accessibility, real security/distribution/game tests and stable-release audit. Stable is not authorized before verified P0 acceptance.
+
+DEFERRED: Sinytra Connector, Kilt, Cross-Loader Compatibility Manager, Fabric-to-Forge, Forge-to-Fabric, Forge-to-NeoForge, NeoForge-to-Forge and all other third-party bridges. Retained as explicit requirements; do not implement now. Detailed grades: ../PROJECT_PROGRESS_SUMMARY.md.

@@ -1,4 +1,7 @@
 {
+  "StopGame": "Detener Minecraft",
+  "StopWarning": "Si es posible, cierra Minecraft desde el menú del juego. Forzar la detención finaliza el juego y sus procesos secundarios y puede provocar la pérdida de cambios del mundo sin guardar.",
+  "StopAccept": "Entiendo que se pueden perder los cambios sin guardar",
   "Files": "Archivos",
   "Bytes": "bytes",
   "ModBaselineTitle": "Revisar mods locales…",
