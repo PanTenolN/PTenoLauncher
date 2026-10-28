@@ -91,4 +91,24 @@ public sealed partial class MainWindow : Window
     }
     private async void LoadQuiltVersions(object? sender,RoutedEventArgs e) { if(DataContext is MainViewModel vm)await vm.LoadQuiltVersionsAsync(); }
     private async void LoadFabricVersions(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.LoadFabricVersionsAsync(); }
+    private async void SaveAiConfiguration(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.SaveAiConfigurationAsync(); }
+    private async void DeleteAiKey(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.DeleteAiKeyAsync(); }
+    private async void AskAi(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.AskAiAsync(false); }
+    private async void AnalyzeAiLog(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.AskAiAsync(true); }
+    private async void LoadTranslationDrafts(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.LoadTranslationDraftsAsync(); }
+    private async void TranslateMods(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.TranslateModsAsync(); }
+    private async void LoadTranslationEditor(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.LoadTranslationEditorAsync(); }
+    private async void SaveTranslationEditor(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.SaveTranslationEditorAsync(); }
+    private async void ExportTranslationPack(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.ExportTranslationPackAsync(); }
+    private async void ImportTranslationJars(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsBusy: false } vm) return;
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new() { Title = TextCatalog.Get("AiImport"), AllowMultiple = true, FileTypeFilter = [new("JAR") { Patterns = ["*.jar"] }] });
+            if (files.Count > 0) await vm.ImportTranslationJarsAsync(files.Select(f => f.TryGetLocalPath()).OfType<string>());
+        }
+        catch (Exception ex) { vm.Status = ex.Message; }
+    }
+    private async void TranslateAllMods(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.TranslateModsAsync(true); }
 }

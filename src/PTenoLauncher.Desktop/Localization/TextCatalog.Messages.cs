@@ -98,12 +98,31 @@ public static partial class TextCatalog
         Texts.Add("ModCount", ("Модів: {0}", "Mods: {0}"));
         Texts.Add("FilesSize", ("Файлів: {0} · {1:N2} MB", "Files: {0} · {1:N2} MB"));
         Texts.Add("AuthServiceError", ("Помилка входу: {0}, HTTP {1}. Етап: {2}. Перевірте доступ застосунку та стан акаунта. Сам код HTTP не визначає причину.", "Sign-in failed: {0}, HTTP {1}. Stage: {2}. Check application access and account status. The HTTP code alone does not establish the cause."));
+        Texts.Add("ReadinessReady", ("Готово до офлайн-гри: {0} файлів Minecraft і {1} модів перевірено.", "Ready for offline play: {0} Minecraft files and {1} mods verified."));
+        Texts.Add("ReadinessDiagnostic", ("Діагностика [{0}]: {1}", "Diagnostic [{0}]: {1}"));
+        Texts.Add("Readiness.loader.unsupported", ("Встановлення та запуск цього Mod Loader ще не реалізовано.", "Installing and launching this mod loader is not implemented yet."));
+        Texts.Add("Readiness.manifest.corrupt", ("Пошкоджено локальний опис встановлення.", "The local installation record is corrupt."));
+        Texts.Add("Readiness.game.missing", ("Minecraft ще не встановлено для цього профілю.", "Minecraft is not installed for this profile yet."));
+        Texts.Add("Readiness.loader.mismatch", ("Встановіть вибраний Mod Loader або Vanilla для цього профілю.", "Install the selected mod loader or Vanilla for this profile."));
+        Texts.Add("Readiness.version.mismatch", ("Встановлена версія відрізняється від налаштувань профілю.", "The installed version differs from the profile settings."));
+        Texts.Add("Readiness.file.invalid", ("Необхідний файл гри відсутній або пошкоджений.", "A required game file is missing or corrupt."));
+        Texts.Add("Readiness.java.missing", ("Оберіть Java x64 для профілю.", "Select 64-bit Java for this profile."));
+        Texts.Add("Readiness.java.corrupt", ("Пошкоджено керований Java Runtime. Відновіть Java.", "The managed Java runtime is corrupt. Repair Java."));
+        Texts.Add("Readiness.java.arch", ("Потрібна Java x64.", "64-bit Java is required."));
+        Texts.Add("Readiness.java.version", ("Обрана Java не відповідає версії, потрібній для гри.", "The selected Java version does not match the game's required version."));
+        Texts.Add("Readiness.java.invalid", ("Java не пройшла перевірку.", "Java verification failed."));
+        Texts.Add("Readiness.account.missing", ("Спочатку увійдіть онлайн і підтвердьте ліцензію Minecraft Java Edition.", "Sign in online first and verify Minecraft Java Edition ownership."));
+        RegisterAiTexts();
+        LoadAdditionalLanguages();
     }
-    public static string Format(string key, params object?[] args) => string.Format(Language == "en" ? CultureInfo.GetCultureInfo("en-IE") : CultureInfo.GetCultureInfo("uk-UA"), Get(key), args);
+    public static string Format(string key, params object?[] args) => string.Format(CultureInfo.GetCultureInfo(Language == "en" ? "en-IE" : Language == "uk" ? "uk-UA" : Language), Get(key), args);
     public static string Relocalize(string value)
     {
-        foreach (var text in Texts.Values)
-            if (value == text.Uk || value == text.En) return Language == "en" ? text.En : text.Uk;
+        foreach (var pair in Texts)
+        {
+            if (value == pair.Value.Uk || value == pair.Value.En || Additional.Values.Any(c => c.TryGetValue(pair.Key, out var translated) && translated == value))
+                return Get(pair.Key);
+        }
         return value;
     }
 }

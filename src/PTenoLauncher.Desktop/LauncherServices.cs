@@ -6,6 +6,8 @@ using PTenoLauncher.Infrastructure.Mods;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Security;
 using PTenoLauncher.Infrastructure.Storage;
+using PTenoLauncher.Infrastructure.AI;
+using System.Text;
 
 namespace PTenoLauncher.Desktop;
 
@@ -33,6 +35,10 @@ public sealed class LauncherServices : IDisposable
     public PTenoLauncher.Infrastructure.AI.AiPolicy Ai { get; } = new();
     public ProfileUsage Usage { get; }
     public ProfileDeletionService Deletion { get; }
+    public OpenAiClient OpenAi { get; }
+    public TranslationWorkspace Translations { get; }
+    public SecretVault AiSecrets { get; }
+    private readonly HttpClient aiHttp;
     private readonly HttpClient http = NetworkPolicy.CreateHttpClient();
     public LauncherServices(LauncherPaths paths)
     {
@@ -50,6 +56,10 @@ public sealed class LauncherServices : IDisposable
         Launcher = new(paths, Readiness, Authentication, Network, Store, Log);
         Modrinth = new(paths, downloads, Network); RemoteMods = new(paths, Store, Modrinth, downloads, Mods); Backups = new(paths, Store);
         Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage);
+        AiSecrets = new(paths);
+        aiHttp = new(new AiRequestGateHandler(Ai, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(2) };
+        OpenAi = new(aiHttp, Ai, Network, () => AiSecrets.Read("openai-api-key") is { } bytes ? Encoding.UTF8.GetString(bytes) : null);
+        Translations = new(paths, Store, Usage, Ai, OpenAi);
     }
-    public void Dispose() => http.Dispose();
+    public void Dispose() { Ai.SetEnabled(false); aiHttp.Dispose(); http.Dispose(); }
 }

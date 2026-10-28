@@ -4,7 +4,9 @@ namespace PTenoLauncher.Desktop.Localization;
 public sealed record UiLanguage(string Code, string Name) { public override string ToString() => Name; }
 public static partial class TextCatalog
 {
-    public static readonly UiLanguage[] Languages = [new("uk", "Українська"), new("en", "English")];
+    public static readonly UiLanguage[] Languages = [new("uk", "Українська"), new("en", "English"),
+        new("pl", "Polski"), new("de", "Deutsch"), new("es", "Español"),
+        new("fr", "Français"), new("pt-BR", "Português (Brasil)"), new("ru", "Русский")];
     public static string Language { get; private set; } = "uk";
     private static readonly Dictionary<string,(string Uk,string En)> Texts = new()
     {
@@ -66,10 +68,16 @@ public static partial class TextCatalog
         ["Data"]=("Локальні дані","Local data"), ["Archived"]=("Показувати архівовані профілі","Show archived profiles"),
         ["Close"]=("Закрити","Close"), ["LaunchHint"]=("Запуск потребує встановленої гри, сумісної Java й підтвердженого акаунта.","Launch requires installed game files, compatible Java and a verified account.")
     };
-    public static string Get(string key) => Texts.TryGetValue(key, out var value) ? Language == "en" ? value.En : value.Uk : key;
+    public static string Get(string key)
+    {
+        if (!Texts.TryGetValue(key, out var value)) return key;
+        if (Language == "uk") return value.Uk;
+        if (Additional.TryGetValue(Language, out var catalog) && catalog.TryGetValue(key, out var translated)) return translated;
+        return value.En;
+    }
     public static void Apply(string language)
     {
-        Language = language == "en" ? "en" : "uk";
+        Language = Languages.FirstOrDefault(item => string.Equals(item.Code, language, StringComparison.OrdinalIgnoreCase))?.Code ?? "uk";
         if (Application.Current is not { } app) return;
         foreach (var key in Texts.Keys) app.Resources["Text." + key] = Get(key);
     }

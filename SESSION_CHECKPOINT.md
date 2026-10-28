@@ -1,24 +1,18 @@
-### Eight-language work interrupted by environment disconnect - 2026-10-28
+# Resume checkpoint — PTenoLauncher 0.2.0
 
-The owner approved Polish (pl), German (de), Spanish (es), French (fr), Brazilian Portuguese (pt-BR) and Russian (ru), alongside Ukrainian/English. Local changes were written in the existing Windows workspace before its execution environment became unavailable. **These new source changes have NOT been published to this repository and their final build/test result is NOT VERIFIED.** The last verified public source remains the 288-test localization/auth-stage checkpoint; its Windows run 40730734856 succeeded.
+Remote interrupted-block checkpoint 745b45502541bb4ff0a10771aeecde1cccb7bf05 is retained in GitHub history; its unverified state is superseded by the recovered, tested block below. No original architecture or files were recreated.
 
-Local files to recover and inspect:
-- src/PTenoLauncher.Desktop/Localization/Locales/{pl,de,es,fr,pt-BR,ru}.json: six real translation catalogs, 201 entries each (187 existing keys plus 14 readiness keys); no generated English-only placeholder catalogs.
-- TextCatalog.cs: eight native-name language choices, canonical language-code selection and additional-catalog lookup.
-- TextCatalog.Locales.cs: embedded-resource loading, complete-key checks and composite-format/placeholder validation.
-- TextCatalog.Messages.cs: additional locale loading, culture-aware formatting, cross-locale static-message refresh and readiness keys.
-- TextCatalog.Readiness.cs: shared resource-based readiness presentation.
-- Desktop csproj: embedded JSON resources; MainWindow.axaml: named LanguagePicker.
-- ViewModel Fabric/Quilt/remote statuses and optional choices: language refresh.
-- tests/PTenoLauncher.Tests/AdditionalLanguagesTests.cs: 17 expanded cases for eight complete catalogs, rejected missing/broken translations, actual picker/SQLite reload and original log preservation.
+## Eight languages and optional online AI - 2026-10-28
 
-Initial eight-language framework build passed with 0 errors/warnings before the final readiness/tests changes. The final command started the solution build and full test suite, writing artifacts/0.2.0/eight-languages-build.log, eight-languages-tests.log and tests/eight-languages.trx; transport disconnected before its output could be read. Do not treat the previous 288-test result as verification of these new changes. First inspect durable files when Windows access returns; avoid duplicate jobs if one is still running.
+Development resumed and the interrupted eight-language block was recovered. Eight selectable offline UI catalogs (uk/en/pl/de/es/fr/pt-BR/ru) now cover 230 keys each, including AI controls and major offline readiness findings. Catalog completeness/format validation, actual picker switching and SQLite reload pass. Low-level mod/security diagnostics, some already-formatted live statuses and native-speaker/DPI review remain incomplete; this is not full application-wide localization.
 
-Next: verify JSON/Unicode/formats; inspect/fix the final build/tests; check all eight languages in the actual window, persistence and offline readiness. Update README, docs/LOCALIZATION.md, DEVELOPMENT_STATUS.md, TEST_REPORT.md, docs/ROADMAP.md, RELEASE_NOTES.md and traceability with actual results, then publish the recovered source and verify the new CI/prerelease. Preserve all 184 requirements and AI-development disclosure. Local SESSION_CHECKPOINT.md predates this remote note; merge it when reconnecting instead of overwriting this checkpoint.
+Implemented the optional OpenAI Responses client (fixed HTTPS endpoint, store=false, bounded output, no tools/retries), protected per-user API key configuration, assistant and selected-log analysis, modern JAR language import, selected-namespace and bulk translation, validated batches with atomic resumption, local manual editor, incremental source update handling and profile-owned resource-pack generation. AI off cancels provider operations and keeps local translation editing/export available. No local model or Ollama. See docs/ONLINE_AI.md for usage and limits.
 
-All current catalog entries are translated, but low-level mod/security diagnostics and some previously formatted dynamic messages remain outside complete localization. Native-speaker/Windows DPI linguistic review has not been performed. Do not claim complete application-wide translation. Microsoft AppID review approval and licensed gameplay remain pending; no new account credentials or tokens were used.
+Verification: Release build 0 errors/warnings; **319/319 tests passed**, 0 failed/errors/skipped/not-run. Logs: artifacts/0.2.0/online-ai-final-build.log; online-ai-final-tests.log; tests/online-ai-final.trx. Prior eight-language-only suite: 305/305 passed. OpenAI tests use synthetic HTTP/JAR/profile fixtures, not paid live API requests. Existing mod/core/auth/deletion tests remain passing. Real OpenAI account/model/translation-quality and in-game resource-pack tests are NOT VERIFIED. Minecraft application approval, licensed gameplay and latest installer lifecycle remain pending.
 
- Resume checkpoint — PTenoLauncher 0.2.0
+Resource packs currently require an explicit numeric pack_format. Legacy .lang, nested JAR language resources and arbitrary component-valued language JSON are unsupported. The editor is JSON-based; no auto-activation or game-file modification is claimed. Missing/unreviewed entries are reported and excluded from the generated pack. Ownership registration recognizes only the selected profile's fixed generated-pack paths; deletion preview remains safe.
+
+All 184 approved requirements are retained. GitHub source/release results must be checked for this exact new commit; earlier binaries do not include these changes. Development disclosure remains prominent: created and developed with AI assistance (OpenAI Codex).
 
 ## Localization and sign-in diagnostics - 2026-10-28
 
@@ -131,3 +125,9 @@ Published 193 reviewed source/documentation files to main, commit 92998deeb09077
 
 
 Final local verification for the localization/sign-in-stage block: Release build 0 errors, 0 warnings; 288/288 tests passed, no failures/errors/skips/not-run. Includes 7 new expanded cases in LocalizationTests. No real authentication/gameplay or current installer lifecycle is claimed.
+
+
+Localization/auth-stage source published: commit 8fe5ae248f430e096f479e3e32294da5b413306d. 288 tests pass; 0 build errors/warnings. New CI/release awaits verification; prior preview is actually public. Continue low-level diagnostic localization and live formatted-message refresh. Approval pending. No account tokens or user worlds used.
+
+
+Native online-AI checkpoint: self-contained win-x64 publish PASS (online-ai-publish.log); isolated native startup PASS, initialized=True, code 0 (.local/online-ai-native/gui-smoke.txt; online-ai-native-smoke.log). This verifies launcher startup, not live AI/Minecraft or installer lifecycle.

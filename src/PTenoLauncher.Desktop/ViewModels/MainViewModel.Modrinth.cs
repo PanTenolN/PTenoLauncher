@@ -20,7 +20,7 @@ public sealed partial class MainViewModel
     private CatalogSearchHit? remoteProject;
     private CatalogModVersion? remoteVersion;
     public string RemoteQuery { get => remoteQuery; set => Set(ref remoteQuery, value); }
-    public string RemoteSummary { get => remoteSummary; set => Set(ref remoteSummary, value); }
+    public string RemoteSummary { get => TextCatalog.Relocalize(remoteSummary); set => Set(ref remoteSummary, value); }
     public bool RemoteConfirmed { get => remoteConfirmed; set => Set(ref remoteConfirmed, value); }
     public CatalogSearchHit? SelectedRemoteProject
     {

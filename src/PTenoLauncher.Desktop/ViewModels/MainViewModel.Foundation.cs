@@ -73,7 +73,7 @@ public sealed partial class MainViewModel
     private bool animations = true;
     public bool Animations { get => animations; set => Set(ref animations, value); }
     private UiLanguage selectedLanguage = TextCatalog.Languages[0];
-    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); foreach (var name in new[] { nameof(PageTitle), nameof(ModeText), nameof(ProfileCount), nameof(Status), nameof(CatalogStatus), nameof(Readiness), nameof(CartSummary), nameof(ActiveMods), nameof(FabricStatus), nameof(QuiltStatus), nameof(RemoteSummary) }) Changed(name); if (NeedsSignIn) Account = TextCatalog.Get("Message005"); } } }
+    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); foreach (var name in new[] { nameof(PageTitle), nameof(ModeText), nameof(ProfileCount), nameof(Status), nameof(CatalogStatus), nameof(Readiness), nameof(CartSummary), nameof(ActiveMods), nameof(FabricStatus), nameof(QuiltStatus), nameof(RemoteSummary) }) Changed(name); foreach (var choice in OptionalChoices) choice.RefreshLanguage(); if (NeedsSignIn) Account = TextCatalog.Get("Message005"); } } }
     public UiLanguage[] Languages => TextCatalog.Languages;
     private bool aiEnabled;
     public bool AiEnabled { get => aiEnabled; set { Set(ref aiEnabled, value); services.Ai.SetEnabled(value); } }

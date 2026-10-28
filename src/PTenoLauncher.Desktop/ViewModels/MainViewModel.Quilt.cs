@@ -11,7 +11,7 @@ public sealed partial class MainViewModel
     public QuiltLoaderVersion? SelectedQuiltVersion {get=>selectedQuiltVersion;set=>Set(ref selectedQuiltVersion,value);}
     private static string DefaultQuiltStatus => TextCatalog.Get("Message063");
     private string quiltStatus=DefaultQuiltStatus;
-    public string QuiltStatus {get=>quiltStatus;set=>Set(ref quiltStatus,value);}
+    public string QuiltStatus {get=>TextCatalog.Relocalize(quiltStatus);set=>Set(ref quiltStatus,value);}
     public bool IsQuiltProfile=>SelectedProfile is {Loader:ModLoader.Quilt};
     private void ResetQuiltSelection(){QuiltVersions.Clear();SelectedQuiltVersion=null;QuiltStatus=DefaultQuiltStatus;}
     public Task LoadQuiltVersionsAsync()=>RunAsync(async ct=>

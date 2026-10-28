@@ -82,6 +82,9 @@ public sealed class ProfileDeletionService(LauncherPaths paths, ILauncherStore s
     }
     private static void ValidateArtifact(OwnedArtifact artifact, Guid id)
     {
+        if (artifact.Kind == "translation-resourcepack" && artifact.ProfileId == id &&
+            System.Text.RegularExpressions.Regex.IsMatch(artifact.RelativePath, @"\Ainstances/" + id.ToString("N") +
+                @"/game/resourcepacks/pteno-translations-(?:uk_ua|en_us|pl_pl|de_de|es_es|fr_fr|pt_br|ru_ru)\.zip\z")) return;
         if (artifact.ProfileId != id || artifact.Kind is not ("backup" or "export") ||
             !(artifact.Kind == "backup" && artifact.RelativePath.StartsWith("backups/", StringComparison.Ordinal) ||
               artifact.Kind == "export" && artifact.RelativePath.StartsWith("exports/", StringComparison.Ordinal)))

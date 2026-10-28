@@ -11,7 +11,7 @@ public sealed partial class MainViewModel
     public FabricLoaderVersion? SelectedFabricVersion { get => selectedFabricVersion; set => Set(ref selectedFabricVersion, value); }
     private static string DefaultFabricStatus => TextCatalog.Get("Message030");
     private string fabricStatus = DefaultFabricStatus;
-    public string FabricStatus { get => fabricStatus; set => Set(ref fabricStatus, value); }
+    public string FabricStatus { get => TextCatalog.Relocalize(fabricStatus); set => Set(ref fabricStatus, value); }
     public bool IsFabricProfile => SelectedProfile is { Loader: ModLoader.Fabric };
     private void ResetFabricSelection() { FabricVersions.Clear(); SelectedFabricVersion = null; FabricStatus = DefaultFabricStatus; }
     public Task LoadFabricVersionsAsync() => RunAsync(async ct =>

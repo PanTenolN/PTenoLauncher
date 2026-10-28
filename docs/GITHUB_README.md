@@ -22,7 +22,7 @@ The repository contains the launcher source, tests, build scripts and installer 
 - Mods navigation hidden for Vanilla profiles; a selected-profile mods-folder button.
 - Launch process/console and official authentication code with protected local account storage. Their presence does not establish successful gameplay.
 
-The source checkpoint passed **281 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
+The source checkpoint passed **319 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
 
 ## Microsoft / Minecraft authentication
 
@@ -32,15 +32,15 @@ The owner completed browser OAuth, but a subsequent Minecraft Services request r
 
 ## Languages
 
-**Ukrainian and English are selectable**, with live resource switching and SQLite persistence. Localization is **partial**: some diagnostics and labels remain hard-coded or do not refresh immediately. Other languages are not yet provided. See [localization status](docs/LOCALIZATION.md); no incomplete language is presented as fully supported.
+**Ukrainian, English, Polish, German, Spanish, French, Brazilian Portuguese and Russian are selectable**, with 230 validated UI keys per language, live resource switching and SQLite persistence. Low-level diagnostic localization and linguistic/DPI review remain partial. See [localization status](docs/LOCALIZATION.md).
 
 ## AI disclosure
 
-AI-assisted development is separate from optional AI functionality inside the launcher. The runtime AI gate defaults to off. An online AI assistant/translator is not implemented yet, and no local AI models are included. Minecraft preparation, mods and deterministic dependencies do not depend on an AI provider.
+AI-assisted development is separate from optional AI functionality inside the launcher. The runtime AI gate defaults to off. An optional OpenAI assistant/selected-log analysis and modern mod-JSON translation workflow are implemented, with protected user-supplied credentials, explicit paid-transfer consent, a local editor, incremental updates and resource-pack export. Live API/model quality and game activation remain unverified. No local AI models are included. See [online AI usage and limits](docs/ONLINE_AI.md). Minecraft preparation, mods and deterministic dependencies do not depend on an AI provider.
 
 ## Known limits and next work
 
-Forge/NeoForge loader installation, complete nested-mod compatibility, modpacks, server management, optional online AI, plugins and updating remain incomplete. The current installer lifecycle and licensed game tests need separate verification. Binaries are unsigned; local NuGet vulnerability-audit connectivity was blocked, and the enabled remote audit must be assessed from its actual run.
+Forge/NeoForge loader installation, complete nested-mod compatibility, modpacks, server management, broader AI/mod-format coverage, plugins and updating remain incomplete. The current installer lifecycle and licensed game tests need separate verification. Binaries are unsigned; local NuGet vulnerability-audit connectivity was blocked, and the enabled remote audit must be assessed from its actual run.
 
 All approved requirements are retained in [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md), [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) and [docs/ROADMAP.md](docs/ROADMAP.md). Preview limitations are listed in [docs/PREVIEW_RELEASE.md](docs/PREVIEW_RELEASE.md).
 

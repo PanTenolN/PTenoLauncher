@@ -42,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject
                 Memory = value.MemoryMb.ToString(CultureInfo.InvariantCulture); JavaPath = value.JavaPath ?? "";
             }
             ResetFabricSelection(); ResetQuiltSelection();
+            ResetTranslationSelection();
             ClearRemotePlan(); RemoteSearchResults.Clear(); RemoteVersions.Clear(); SelectedRemoteProject = null; SelectedRemoteVersion = null;
             Cart.Clear(); CartSummary = TextCatalog.Get("Message000"); UnknownSourceAccepted = false;
             readinessReport = null; Readiness = TextCatalog.Get("Message006");
@@ -139,6 +140,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         await services.Store.InitializeAsync(ct);
         awaitLanguage = await services.Store.GetSettingAsync("ui.language", ct) ?? "uk";
+        AiModel = await services.Store.GetSettingAsync("ai.openai.model", ct) ?? "";
         await InitializeFoundationAsync(ct);
         ShowSnapshots = !bool.TryParse(await services.Store.GetSettingAsync("versions.snapshots", ct), out var snapshots) || snapshots;
         ShowHistorical = bool.TryParse(await services.Store.GetSettingAsync("versions.historical", ct), out var historical) && historical;

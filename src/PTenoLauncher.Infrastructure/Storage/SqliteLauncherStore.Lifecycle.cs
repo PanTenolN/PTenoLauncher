@@ -6,7 +6,10 @@ public sealed partial class SqliteLauncherStore
     public Task RegisterArtifactAsync(OwnedArtifact artifact, CancellationToken ct = default) => Task.Run(() =>
     {
         _ = SafePath.Join(paths.Root, artifact.RelativePath);
-        if (artifact.Kind is not ("backup" or "export")) throw new ArgumentException("Unknown artifact kind.");
+        if (artifact.Kind is not ("backup" or "export" or "translation-resourcepack")) throw new ArgumentException("Unknown artifact kind.");
+        if (artifact.Kind == "translation-resourcepack" && !System.Text.RegularExpressions.Regex.IsMatch(artifact.RelativePath,
+            @"\Ainstances/" + artifact.ProfileId.ToString("N") + @"/game/resourcepacks/pteno-translations-(?:uk_ua|en_us|pl_pl|de_de|es_es|fr_fr|pt_br|ru_ru)\.zip\z"))
+            throw new InvalidDataException("Translation resource pack is outside its profile.");
         using var db = Open(); using var cmd = db.CreateCommand();
         cmd.CommandText = "INSERT INTO owned_artifacts(profile_id,relative_path,kind) VALUES($id,$path,$kind) ON CONFLICT(relative_path) DO UPDATE SET profile_id=$id,kind=$kind";
         cmd.Parameters.AddWithValue("$id", artifact.ProfileId.ToString("N"));

@@ -13,9 +13,9 @@ Known limits:
 
 - Microsoft browser OAuth has completed in the owner's test, but the subsequent Minecraft Services request returned HTTP 403. The owner reports submitting the AppID review request; approval remains pending. Full licensed sign-in, refresh, entitlement/profile retrieval and actual online/offline Minecraft gameplay have not been verified.
 - Application and installer are unsigned. The pipeline does not test signing or circumvent Windows security prompts.
-- Ukrainian and English are selectable; localization is partial. Some diagnostics remain Ukrainian or English regardless of selection. Other languages are not yet provided.
+- Eight interface languages are selectable (Ukrainian, English, Polish, German, Spanish, French, Brazilian Portuguese, Russian), with 230 validated UI keys each. Low-level diagnostic/local linguistic review remains partial.
 - Forge/NeoForge native mod metadata is partially supported; their loader installation and full nested-mod resolution remain incomplete.
-- An AI assistant/translator, server manager, modpacks and several other roadmap features are unfinished. AI is optional and off by default; no local AI model is included.
+- Optional OpenAI assistant/log analysis and modern JAR-JSON translation/editor/incremental resource-pack export are implemented. Your own API key/model and paid-transfer confirmation are required; live API quality and in-game pack activation are unverified. Legacy/nested mod language formats remain unsupported. AI defaults off, no local model is included. See docs/ONLINE_AI.md. Server manager, modpacks and other roadmap items remain unfinished.
 - NuGet auditing is enabled in the build. Inspect the individual run for restore/audit failures or warnings; a passing build is not a claim of absolute security.
 
 Minecraft binaries, Microsoft tokens, user worlds and private API keys are not included. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.

@@ -7,6 +7,7 @@ public sealed class OptionalDependencyChoice : ObservableObject
     public bool CanSelect => Option.CanSelect;
     public string Title => (Option.Dependency.ProjectId ?? Option.Dependency.VersionId ?? Option.Dependency.FileName ?? TextCatalog.Get("Message068")) + TextCatalog.Get("Message069") + Option.Parent;
     public string Note => !CanSelect ? TextCatalog.Get("Message070") : Option.Dependency.VersionId is string version ? TextCatalog.Get("Message071") + version : TextCatalog.Get("Message072");
+    internal void RefreshLanguage() { Changed(nameof(Title)); Changed(nameof(Note)); }
     private readonly Action<OptionalDependencyChoice> changed;
     private bool selected;
     public bool IsSelected {get=>selected;set{if(CanSelect && Set(ref selected,value))changed(this);}}

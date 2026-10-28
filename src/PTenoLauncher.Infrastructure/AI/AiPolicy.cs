@@ -10,11 +10,13 @@ public sealed class AiPolicy
     public bool Enabled { get { lock (sync) return enabled; } }
     public void SetEnabled(bool value)
     {
+        CancellationTokenSource[] cancel;
         lock (sync)
         {
             enabled = value;
-            if (!value) foreach (var operation in active) operation.Cancel();
+            cancel = value ? [] : active.ToArray();
         }
+        foreach (var operation in cancel) { try { operation.Cancel(); } catch (ObjectDisposedException) { } }
     }
     public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct = default)
     {
