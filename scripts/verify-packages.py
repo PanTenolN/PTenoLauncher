@@ -43,6 +43,8 @@ for name in sorted(required):
             if not expected.issubset(names):raise ValueError("Source checkpoint is incomplete")
             language_files={"src/PTenoLauncher.Desktop/Dialogs/LanguageSelectionDialog.axaml","src/PTenoLauncher.Desktop/Dialogs/LanguageSelectionDialog.axaml.cs","src/PTenoLauncher.Desktop/ViewModels/MainViewModel.Onboarding.cs","tests/PTenoLauncher.Tests/LanguageOnboardingTests.cs","docs/FIRST_RUN_LANGUAGE.md","docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md"}
             if not language_files.issubset(names):raise ValueError("First-run language source checkpoint is incomplete")
+            java_files={"src/PTenoLauncher.Infrastructure/Minecraft/TemurinPackage.cs","src/PTenoLauncher.Infrastructure/Minecraft/ManagedJavaValidation.cs","tests/PTenoLauncher.Tests/JavaRuntimeIntegrityTests.cs","tests/PTenoLauncher.IntegrationSmoke/LiveJavaMatrix.cs","docs/JAVA_RUNTIME_VERIFICATION.md","docs/JAVA_RUNTIME_CHECKPOINT.md"}
+            if not java_files.issubset(names):raise ValueError("Java runtime source checkpoint is incomplete")
         archives.append({"path":name,"entries":len(names),"crc":"PASS","privateDataExcluded":True})
 portable_smoke=None
 if args.smoke:

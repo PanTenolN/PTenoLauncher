@@ -11,6 +11,10 @@ var denyNetwork = args.Length > 1 && (args[1] is "--mods-offline" or "--local-de
 using var http = denyNetwork is null ? NetworkPolicy.CreateHttpClient() : new HttpClient(denyNetwork);
 var network = new NetworkPolicy(); var downloader = new VerifiedDownloader(http, network);
 var versions = new VersionManager(paths, downloader);
+if (args.Length > 1 && args[1] == "--java-matrix")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveJavaMatrix.RunAsync(paths); return;
+}
 if (args.Length > 2 && args[1] == "--java-process-check")
 {
     // Explicit opt-in probe of an existing runtime; no account, game or network request.

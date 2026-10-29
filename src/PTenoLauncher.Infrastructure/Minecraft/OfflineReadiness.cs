@@ -33,10 +33,13 @@ public sealed class OfflineReadiness(LauncherPaths paths, JavaManager java, Micr
             try
             {
                 if (!await JavaRuntimeManager.VerifyManagedPathAsync(paths, profile.JavaPath, ct)) issues.Add(new("java.corrupt", "Пошкоджений керований Java Runtime. Відновіть Java."));
+                else
+                {
                 var runtime = await java.InspectAsync(profile.JavaPath, ct);
                 if (!runtime.Is64Bit) issues.Add(new("java.arch", "Потрібна Java x64."));
                 if (receipt is not null && runtime.Major != receipt.JavaMajor)
                     issues.Add(new("java.version", $"Для цієї версії потрібна Java {receipt.JavaMajor}; обрана Java {runtime.Major}."));
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException) { issues.Add(new("java.invalid", "Java не пройшла перевірку.")); }
         }

@@ -1,5 +1,15 @@
 # PTenoLauncher Roadmap
 
+## Managed Java integrity and runtime verification - 2026-10-29
+
+Restored all 27 newer first-run-language source/report files from main 21eefdd57b2a95c786ea7ecd1601a8925eb85d51 after Git-blob comparison (only CRLF normalization differed); previous local files were backed up. The eight-language menu and 344-test baseline are preserved.
+
+Fixed OfflineReadiness invoking java.exe after detecting managed-runtime corruption. Added exact tracked-executable/folder identity, complete bounded inventory and hash/size checks, untracked-DLL/link rejection, strict Temurin major/platform/source validation, bounded x64-only version inspection and probe-only inherited Java-option removal. Corrupt runtime directories are retained and cached archives can repair into a new verified directory. Added explicit managed-only installation and online/offline Minecraft Java requirement lookup. See docs/JAVA_RUNTIME_VERIFICATION.md.
+
+Local Release build: **0 errors, 0 warnings**. Full suite: **386/386 passed**, zero failed/errors/skipped/not-run, including 42 new JavaRuntimeIntegrityTests. Evidence: artifacts/0.2.0/java-runtime-release-build.log; java-runtime-tests.log; tests/java-runtime.trx. The real local runtime matrix failed before its first install because api.adoptium.net was network-unreachable (SocketException 10051). That failed/blocked evidence is retained and is NOT a successful live install.
+
+Windows CI now gates packaging/publication on the actual managed Java 8/17/21/25 matrix: official download/hash/extraction/version, zero-HTTP offline reuse, Java 21 cached-archive corruption repair, Java 17 process-local option-isolation probe, synthetic-data preservation and cached Mojang Java metadata. Its new source commit/run/release result must be verified separately in docs/JAVA_RUNTIME_CHECKPOINT.md. All 184 original / 189 current requirements and 44 module grades remain; bridges remain DEFERRED. No Microsoft approval, Minecraft gameplay, live AI quality, installer lifecycle or stable release is claimed. Next core work: historical virtual/mapped assets/arguments and licensed gameplay after approval.
+
 ## Verified first-run language preview - 2026-10-29
 
 Release source: `780f22642a658ddb4f8fee5bc9ccbdc795fcf3c0`. Windows CI **40827117958 SUCCESS**: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40827117958 . The complete suite passed **344/344 tests**, zero failed/errors/skipped/not-run; Release build **0 errors, 0 warnings**. This includes 14 new actual-XAML/offline/SQLite/restart/preservation/write-failure cases for language onboarding. Both ZIP integrity checks, required-source/progress checks and freshly extracted self-contained Portable startup passed. Requirements guard: 184 original IDs retained, 189 current rows, 44 graded modules.

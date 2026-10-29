@@ -30,6 +30,9 @@ jobs:
         run: |
           $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
           ./scripts/build.ps1 -Publish -Installer
+          dotnet tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll .local/ci-java-matrix --java-matrix
+          if ($LASTEXITCODE -ne 0) { throw 'Managed Java runtime matrix failed' }
+          Copy-Item .local/ci-java-matrix/java-matrix-result.json artifacts/0.2.0/java-matrix-result.json
           python scripts/verify-requirements.py
           python scripts/package-preview.py
           python scripts/verify-packages.py --smoke
@@ -43,6 +46,9 @@ jobs:
             artifacts/SHA256SUMS.txt
             artifacts/tests/*.trx
             artifacts/0.2.0/final-artifact-verification.json
+            artifacts/0.2.0/java-matrix-result.json
+            .local/ci-java-matrix/java-matrix-error.json
+            .local/ci-java-matrix/java-*.log
           if-no-files-found: warn
   publish:
     needs: windows
