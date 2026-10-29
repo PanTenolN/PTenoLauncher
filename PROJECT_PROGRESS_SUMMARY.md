@@ -1,5 +1,13 @@
 # PTenoLauncher — стан модулів
 
+## Verified first-run language preview - 2026-10-29
+
+Release source: `780f22642a658ddb4f8fee5bc9ccbdc795fcf3c0`. Windows CI **40827117958 SUCCESS**: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40827117958 . The complete suite passed **344/344 tests**, zero failed/errors/skipped/not-run; Release build **0 errors, 0 warnings**. This includes 14 new actual-XAML/offline/SQLite/restart/preservation/write-failure cases for language onboarding. Both ZIP integrity checks, required-source/progress checks and freshly extracted self-contained Portable startup passed. Requirements guard: 184 original IDs retained, 189 current rows, 44 graded modules.
+
+Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.0-preview.780f22642a65 . Setup, Portable, Source ZIP and SHA256SUMS were read back and their package hashes matched the Windows build log. The earlier Linux-only startup failures remain recorded as Windows-DPAPI platform limitations; they were not reclassified as passing Linux tests. The first-run selection feature uses 238-key catalogs across eight languages, preserves supported saved preferences and leaves authentication/readiness gates unchanged.
+
+This supersedes older first-run notes awaiting Windows CI/publication. Interactive native language-menu/DPI review, Microsoft approval/licensed gameplay, live AI quality, Java 8/17/25 and current installer lifecycle remain unverified. Checkpoint: `docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md`. Resume independent P0 Java/runtime/asset work after this completed UI block; do not recreate the project or undo the deferred-bridge decision.
+
 ## First-run language selection - 2026-10-29
 
 Added the owner's requested language menu before the first normal launcher session. Eight native language names, immediate preview, explicit SQLite confirmation, saved-preference skipping, unsupported/case-normalized preferences and write-failure retry use the existing architecture. Cancel/exit leaves no saved preview. The hidden Settings picker cannot auto-save onboarding changes. Microsoft/AI/network access is not required; authentication and licensing are unchanged. See docs/FIRST_RUN_LANGUAGE.md.
@@ -20,7 +28,7 @@ Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.
 
 | Module | Priority | State | Readiness | Evidence / limits | Next task |
 |---|---|---|---|---|---|
-| Перший запуск: вибір мови | P1 | IMPLEMENTED BUT UNVERIFIED | 50% | 8 native choices; preview/confirm/retry and 14 new UI/SQLite cases; Windows verification pending | Verify Windows suite and native startup |
+| Перший запуск: вибір мови | P1 | PARTIALLY VERIFIED | 75% | 14 Windows UI/SQLite/offline/restart/error-retry cases pass in the 344-case suite | Native interactive/DPI review |
 | Архітектура .NET 10 / Avalonia | Foundation | VERIFIED | 100% | Наявні п'ять проєктів збираються; архітектуру збережено | Зберігати межі модулів |
 | SQLite: налаштування, профілі, історія | Foundation | VERIFIED | 100% | Реальні ізольовані SQLite/файлові тести й перезавантаження UI | Міграції для нових функцій |
 | Microsoft Authentication | P0 | BLOCKED EXTERNALLY | 50% | Browser OAuth проходив; downstream HTTP 403; контрактні тести й DPAPI працюють; approval не підтверджено | Ліцензійні entitlement/profile/refresh/multi-account тести |
