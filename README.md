@@ -47,3 +47,5 @@ All approved requirements are retained in [REQUIREMENTS_TRACEABILITY.md](REQUIRE
 Minecraft game files, user worlds, private keys and account tokens are not distributed in this repository. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.
 
 Current module readiness: [PROJECT_PROGRESS_SUMMARY.md](PROJECT_PROGRESS_SUMMARY.md). Latest process-lifecycle evidence and continuation: [docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md](docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md).
+
+On the first normal startup, select one of eight languages in the welcome menu and confirm to save it locally. Existing supported preferences skip the menu; language can later be changed in Settings / Appearance. [First-run details](docs/FIRST_RUN_LANGUAGE.md) and [latest continuation](docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md).

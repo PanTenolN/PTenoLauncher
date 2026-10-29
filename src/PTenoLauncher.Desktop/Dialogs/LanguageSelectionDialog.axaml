@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.LanguageSelectionDialog" Title="PTenoLauncher"
+        Width="460" Height="540" MinWidth="320" MinHeight="340" WindowStartupLocation="CenterOwner">
+  <Grid Margin="24" RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <StackPanel Spacing="10" Margin="0,0,0,16">
+      <TextBlock Text="PTenoLauncher" FontSize="24" FontWeight="SemiBold"/>
+      <TextBlock Name="LanguageSelectionTitle" Text="{DynamicResource Text.FirstRunTitle}" FontSize="18" TextWrapping="Wrap"/>
+    </StackPanel>
+    <TextBlock Grid.Row="1" Text="{DynamicResource Text.FirstRunHint}" TextWrapping="Wrap" Classes="secondary" Margin="0,0,0,16"/>
+    <ListBox Grid.Row="2" Name="FirstRunLanguagePicker" ItemsSource="{Binding Languages}"
+             SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"
+             FontSize="15" Margin="0,0,0,16" AutomationProperties.Name="Language">
+      <ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="MinHeight" Value="32"/></Style></ListBox.Styles>
+    </ListBox>
+    <TextBlock Grid.Row="3" Name="LanguageSaveError" Text="{DynamicResource Text.FirstRunSaveError}"
+               TextWrapping="Wrap" IsVisible="False" Margin="0,0,0,12"/>
+    <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+      <Button Name="ExitLanguageSelectionButton" Content="{DynamicResource Text.FirstRunExit}" IsCancel="True"
+              IsEnabled="{Binding IsIdle}" Click="Exit" Margin="0,0,12,0"/>
+      <Button Name="ContinueLanguageSelectionButton" Content="{DynamicResource Text.FirstRunContinue}" Classes="primary"
+              IsDefault="True" IsEnabled="{Binding IsIdle}" Click="Continue"/>
+    </WrapPanel>
+  </Grid>
+</Window>

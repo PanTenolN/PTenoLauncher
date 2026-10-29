@@ -24,6 +24,12 @@ public sealed partial class App : Application
             window.Opened += async (_, _) =>
             {
                 await vm.InitializeAsync();
+                if (!vm.IsInitialized) return; // Keep initialization errors visible in the main window.
+                // Unattended package smoke must not wait for user input or save a language choice.
+                if (!Program.Arguments.Contains("--smoke-test") && !await window.EnsureLanguageSelectedAsync())
+                {
+                    window.Close(); return;
+                }
                 if (Program.Arguments.Contains("--smoke-test"))
                 {
                     if (Program.Arguments.Contains("--smoke-fabric"))

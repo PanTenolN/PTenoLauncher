@@ -150,7 +150,9 @@ public sealed partial class MainViewModel : ObservableObject
     public Task InitializeAsync() => RunAsync(async ct =>
     {
         await services.Store.InitializeAsync(ct);
-        awaitLanguage = await services.Store.GetSettingAsync("ui.language", ct) ?? "uk";
+        var savedLanguage = await services.Store.GetSettingAsync("ui.language", ct);
+        NeedsLanguageSelection = !Languages.Any(language => string.Equals(language.Code, savedLanguage, StringComparison.OrdinalIgnoreCase));
+        awaitLanguage = savedLanguage ?? "uk";
         AiModel = await services.Store.GetSettingAsync("ai.openai.model", ct) ?? "";
         await InitializeFoundationAsync(ct);
         ShowSnapshots = !bool.TryParse(await services.Store.GetSettingAsync("versions.snapshots", ct), out var snapshots) || snapshots;

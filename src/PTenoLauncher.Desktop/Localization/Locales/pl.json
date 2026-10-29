@@ -1,4 +1,9 @@
 {
+  "FirstRunTitle": "Wybierz język",
+  "FirstRunHint": "Język możesz później zmienić w ustawieniach.",
+  "FirstRunContinue": "Kontynuuj",
+  "FirstRunExit": "Wyjdź",
+  "FirstRunSaveError": "Nie udało się zapisać języka. Spróbuj ponownie lub sprawdź dostęp do folderu danych.",
   "StopGame": "Zatrzymaj Minecraft",
   "StopWarning": "Jeśli to możliwe, zamknij Minecraft z menu gry. Wymuszone zatrzymanie kończy grę i jej procesy potomne oraz może spowodować utratę niezapisanych zmian w świecie.",
   "StopAccept": "Rozumiem ryzyko utraty niezapisanych zmian",

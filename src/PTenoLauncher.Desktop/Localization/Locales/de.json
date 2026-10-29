@@ -1,4 +1,9 @@
 {
+  "FirstRunTitle": "Sprache auswählen",
+  "FirstRunHint": "Du kannst die Sprache später in den Einstellungen ändern.",
+  "FirstRunContinue": "Weiter",
+  "FirstRunExit": "Beenden",
+  "FirstRunSaveError": "Die Sprache konnte nicht gespeichert werden. Versuche es erneut oder prüfe den Zugriff auf den Datenordner.",
   "StopGame": "Minecraft stoppen",
   "StopWarning": "Schließe Minecraft möglichst über das Spielmenü. Erzwungenes Stoppen beendet das Spiel und seine untergeordneten Prozesse. Nicht gespeicherte Änderungen an der Welt können verloren gehen.",
   "StopAccept": "Ich verstehe, dass nicht gespeicherte Änderungen verloren gehen können",

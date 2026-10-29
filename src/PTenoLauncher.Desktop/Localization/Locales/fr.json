@@ -1,4 +1,9 @@
 {
+  "FirstRunTitle": "Choisissez votre langue",
+  "FirstRunHint": "Vous pourrez changer la langue plus tard dans les paramètres.",
+  "FirstRunContinue": "Continuer",
+  "FirstRunExit": "Quitter",
+  "FirstRunSaveError": "Impossible d’enregistrer la langue. Réessayez ou vérifiez l’accès au dossier de données.",
   "StopGame": "Arrêter Minecraft",
   "StopWarning": "Si possible, ferme Minecraft depuis le menu du jeu. L’arrêt forcé termine le jeu et ses processus enfants et peut entraîner la perte des modifications du monde non enregistrées.",
   "StopAccept": "Je comprends que les modifications non enregistrées peuvent être perdues",

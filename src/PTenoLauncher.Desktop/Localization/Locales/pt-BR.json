@@ -1,4 +1,9 @@
 {
+  "FirstRunTitle": "Escolha seu idioma",
+  "FirstRunHint": "Você pode mudar o idioma depois nas configurações.",
+  "FirstRunContinue": "Continuar",
+  "FirstRunExit": "Sair",
+  "FirstRunSaveError": "Não foi possível salvar o idioma. Tente novamente ou verifique o acesso à pasta de dados.",
   "StopGame": "Parar Minecraft",
   "StopWarning": "Se possível, feche o Minecraft pelo menu do jogo. A parada forçada encerra o jogo e seus processos filhos e pode causar a perda de alterações não salvas no mundo.",
   "StopAccept": "Entendo que alterações não salvas podem ser perdidas",

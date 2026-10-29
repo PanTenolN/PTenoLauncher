@@ -1,5 +1,13 @@
 # PTenoLauncher — стан модулів
 
+## First-run language selection - 2026-10-29
+
+Added the owner's requested language menu before the first normal launcher session. Eight native language names, immediate preview, explicit SQLite confirmation, saved-preference skipping, unsupported/case-normalized preferences and write-failure retry use the existing architecture. Cancel/exit leaves no saved preview. The hidden Settings picker cannot auto-save onboarding changes. Microsoft/AI/network access is not required; authentication and licensing are unchanged. See docs/FIRST_RUN_LANGUAGE.md.
+
+Local Release compilation: 0 errors/warnings. Seventeen catalog/picker cases pass on Linux. The broader Linux filter ran 38 cases: 23 passed, 15 failed at the existing Windows DPAPI startup guard. This is retained as failed/platform-limited evidence, not a successful startup test. Fourteen new actual-XAML/SQLite/preservation cases are added for the full Windows runner (expected suite 344); Windows CI and a new prerelease must be verified separately in docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md. Prior actual Windows preview remains source 827e8832a95baf5d2c9f805fb3c43f563427c90b, CI 40773211706, 330 passed.
+
+UI-FIRSTLANG adds one explicit requirement: all original 184 IDs and four previous additions remain, 189 total; 44 module grades are tracked. Catalogs now contain 238 keys each. Overall localization/DPI remains partial; deferred compatibility bridges remain deferred. Next P0 core/Java/gameplay/installer and live AI checks remain as recorded in the roadmap. No current Microsoft approval, game launch or latest installer lifecycle is implied.
+
 ## Verified process-lifecycle preview - 2026-10-28
 
 Final release source: `827e8832a95baf5d2c9f805fb3c43f563427c90b`; implementation commit: `95d7d7e7ec94dbfee0514f390f239ef35c419505`. Windows CI **40773211706 SUCCESS**: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40773211706 . Release build **0 errors/warnings**, **330/330 tests passed**, 184 original / 188 current requirements and 43 graded modules validated, both ZIP CRC checks passed, fresh extracted self-contained Portable initialized successfully. `gameLaunched=false`.
@@ -12,6 +20,7 @@ Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.
 
 | Module | Priority | State | Readiness | Evidence / limits | Next task |
 |---|---|---|---|---|---|
+| Перший запуск: вибір мови | P1 | IMPLEMENTED BUT UNVERIFIED | 50% | 8 native choices; preview/confirm/retry and 14 new UI/SQLite cases; Windows verification pending | Verify Windows suite and native startup |
 | Архітектура .NET 10 / Avalonia | Foundation | VERIFIED | 100% | Наявні п'ять проєктів збираються; архітектуру збережено | Зберігати межі модулів |
 | SQLite: налаштування, профілі, історія | Foundation | VERIFIED | 100% | Реальні ізольовані SQLite/файлові тести й перезавантаження UI | Міграції для нових функцій |
 | Microsoft Authentication | P0 | BLOCKED EXTERNALLY | 50% | Browser OAuth проходив; downstream HTTP 403; контрактні тести й DPAPI працюють; approval не підтверджено | Ліцензійні entitlement/profile/refresh/multi-account тести |
@@ -51,7 +60,7 @@ Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.
 | Plugin SDK / Manager / permissions | P2 | NOT IMPLEMENTED | 0% | Немає стороннього виконуваного коду; sandbox не заявляється | Process isolation та мінімальні дозволи |
 | Auto Updater / trusted origin / rollback | P2 | NOT IMPLEMENTED | 0% | GitHub releases не є updater | Криптографічне походження, preview й відкат |
 | GitHub Release Automation | Release | PARTIALLY VERIFIED | 75% | Реальний успішний Windows CI/prerelease з чотирма assets | Кожен новий commit перевіряти окремо |
-| Локалізація восьми мов / accessibility | Release | PARTIALLY VERIFIED | 50% | 233 UI keys кожної мови після нового stop-dialog; технічні діагностики, theme names, DPI/linguistic QA часткові | Завершувати після стабілізації P0 |
+| Локалізація восьми мов / accessibility | Release | PARTIALLY VERIFIED | 50% | 238 UI keys кожної мови після нового stop-dialog; технічні діагностики, theme names, DPI/linguistic QA часткові | Завершувати після стабілізації P0 |
 | Theme Manager / graphite UI | Release | PARTIALLY VERIFIED | 75% | SQLite, DynamicResource, п'ять тем; custom/system та DPI review часткові | Контраст, клавіатура, system/custom QA |
 | Цифровий підпис | Release | BLOCKED EXTERNALLY | 0% | Потрібні власний сертифікат і процедура підписання | Не називати поточні binaries підписаними |
 | Sinytra / Kilt / Cross-Loader bridges | Deferred | DEFERRED | 0% | Відкладено власником; усі напрями збережені у traceability | Не реалізовувати в поточному обсязі |

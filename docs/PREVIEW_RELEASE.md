@@ -3,14 +3,12 @@
 **Створено та розробляється за допомогою ШІ (OpenAI Codex).**
 **Created and developed with AI assistance (OpenAI Codex).**
 
-This preview fixes cancellation after a game process starts, cleans up owned subprocesses after cancellation or console errors, and bounds inherited-console draining. Home and Game console now expose Stop Minecraft with a default-cancel dialog, explicit acknowledgement of possible unsaved-world loss and a stale-launch confirmation guard. Prefer closing the game through its menu.
+This preview adds a first-normal-startup language menu with all eight native language names, live preview, explicit SQLite confirmation, saved-preference skipping, safe exit and retry on save failure. Existing profiles/worlds/preferences are retained. No Microsoft sign-in, AI provider or internet is needed to choose a language. Language can later be changed in Settings / Appearance.
 
-Retains eight UI languages, profiles/themes/SQLite, Vanilla/Fabric/Quilt preparation, verified Java downloads, deterministic Modrinth/local-mod dependencies, safe profile deletion/backups and optional OpenAI assistant/translation workflows. Core features remain independent of AI. The new progress report grades 43 modules and retains all 184 original requirements plus four explicit additions; Sinytra, Kilt and cross-loader bridges are deferred.
+Retains confirmed Stop Minecraft controls, owned-process cancellation/console cleanup, graphite themes/profiles/SQLite, Vanilla/Fabric/Quilt preparation, verified Java downloads, deterministic Modrinth/local dependencies, safe deletion/backups and optional online AI translation. The eight catalogs now have 238 keys each; technical diagnostics and DPI/native-speaker review remain partial.
 
-Local Release build: zero errors/warnings; 330 tests passed. A real existing Java 21 x64 process returned the expected version/error exit codes with no network or game launch. Each published preview is gated by its own Windows build/tests/installer compilation/ZIP verification and extracted Portable startup.
+Publication requires a successful Windows build, all 344 tests, requirement checks, Inno Setup compilation, archive integrity/required-source checks and fresh Portable startup. The exact source/CI/result is recorded in docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md. The retained inventory has 184 original IDs and five explicit additions (189 current requirements), plus 44 module grades. Sinytra/Kilt/cross-loader bridges remain deferred.
 
-Microsoft application approval and full entitlement/profile/refresh, licensed Minecraft gameplay/world saves and real-game stopping remain unverified. Live paid OpenAI requests/translation quality, translation-pack activation, Java 8/17/25 matrix and the latest installer installation/upgrade/uninstall lifecycle also remain unverified. Technical localization and some loader/legacy formats are partial. Binaries are unsigned. This is not a stable release.
+Microsoft approval and full entitlement/profile/refresh, actual licensed Minecraft gameplay, live OpenAI quality, translation-pack activation, Java 8/17/25 matrix and the current installer installation/upgrade/uninstall lifecycle remain unverified. Binaries are unsigned. This is a development prerelease, not a stable release.
 
-Artifacts: self-contained Windows x64 Setup EXE, Portable ZIP, source ZIP and SHA256SUMS. Do not include Minecraft binaries, worlds or credentials. Installer lifecycle is not established by compiling an EXE.
-
-See PROJECT_PROGRESS_SUMMARY.md, docs/PROCESS_LIFECYCLE.md, docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md and docs/HOME_TEST_CHECKLIST.md for evidence, limits and continuation.
+Assets: self-contained Windows x64 Setup EXE, Portable ZIP, source ZIP and SHA256SUMS. No Minecraft binaries, worlds, credentials or private caches are redistributed. See PROJECT_PROGRESS_SUMMARY.md and the checkpoint for limits and continuation.

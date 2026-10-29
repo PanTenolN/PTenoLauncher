@@ -41,6 +41,8 @@ for name in sorted(required):
             expected.update({"PROJECT_PROGRESS_SUMMARY.md","DEVELOPMENT_STATUS.md","docs/DEVELOPMENT_BRIEF_2026-10-28.md","docs/requirements-baseline.json","scripts/verify-requirements.py","docs/PROCESS_LIFECYCLE.md","docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md","src/PTenoLauncher.Desktop/ViewModels/MainViewModel.Game.cs","src/PTenoLauncher.Desktop/Dialogs/StopGameDialog.axaml","src/PTenoLauncher.Infrastructure/AI/OpenAiClient.cs","src/PTenoLauncher.Infrastructure/AI/TranslationWorkspace.cs","tests/PTenoLauncher.Tests/ProcessLifecycleTests.cs","tests/PTenoLauncher.Tests/GameStopUiTests.cs"})
             expected.update(f"src/PTenoLauncher.Desktop/Localization/Locales/{language}.json" for language in ("pl","de","es","fr","pt-BR","ru"))
             if not expected.issubset(names):raise ValueError("Source checkpoint is incomplete")
+            language_files={"src/PTenoLauncher.Desktop/Dialogs/LanguageSelectionDialog.axaml","src/PTenoLauncher.Desktop/Dialogs/LanguageSelectionDialog.axaml.cs","src/PTenoLauncher.Desktop/ViewModels/MainViewModel.Onboarding.cs","tests/PTenoLauncher.Tests/LanguageOnboardingTests.cs","docs/FIRST_RUN_LANGUAGE.md","docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md"}
+            if not language_files.issubset(names):raise ValueError("First-run language source checkpoint is incomplete")
         archives.append({"path":name,"entries":len(names),"crc":"PASS","privateDataExcluded":True})
 portable_smoke=None
 if args.smoke:

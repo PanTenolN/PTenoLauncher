@@ -15,6 +15,13 @@ public sealed partial class MainWindow : Window
         ModDropZone.AddHandler(DragDrop.DragOverEvent, OnDragOver);
         ModDropZone.AddHandler(DragDrop.DropEvent, OnDrop);
     }
+    public Task<bool> EnsureLanguageSelectedAsync()
+    {
+        if (DataContext is not MainViewModel { IsInitialized: true } vm) return Task.FromResult(false);
+        return vm.NeedsLanguageSelection
+            ? new LanguageSelectionDialog(vm).ShowDialog<bool>(this)
+            : Task.FromResult(true);
+    }
     private void Navigate(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm && sender is Button { Tag: string tag } && Enum.TryParse<LauncherPage>(tag, out var page)) vm.Page = page;
@@ -45,7 +52,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Unarchive(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.UnarchiveAsync(); }
     private async void ThemeChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true } vm) await vm.SaveThemeAsync(); }
-    private async void LanguageChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true } vm) await vm.SaveLanguageAsync(); }
+    private async void LanguageChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true, NeedsLanguageSelection: false } vm) await vm.SaveLanguageAsync(); }
     private async void AccountChanged(object? sender, SelectionChangedEventArgs e) { if (e.RemovedItems.Count > 0 && DataContext is MainViewModel { IsBusy: false, IsInitialized: true, SelectedAccount: not null } vm) await vm.SelectAccountAsync(); }
     private async void AiChanged(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel { IsInitialized: true } vm) await vm.SaveAiAsync(); }
     private async void ApplyTheme(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.SaveThemeAsync(); }

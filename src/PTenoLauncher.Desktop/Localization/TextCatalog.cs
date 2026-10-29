@@ -10,6 +10,11 @@ public static partial class TextCatalog
     public static string Language { get; private set; } = "uk";
     private static readonly Dictionary<string,(string Uk,string En)> Texts = new()
     {
+        ["FirstRunTitle"]=("Оберіть мову / Choose your language", "Choose your language"),
+        ["FirstRunHint"]=("Пізніше мову можна змінити в налаштуваннях.", "You can change the language later in Settings."),
+        ["FirstRunContinue"]=("Продовжити", "Continue"),
+        ["FirstRunExit"]=("Вийти", "Exit"),
+        ["FirstRunSaveError"]=("Не вдалося зберегти мову. Спробуйте ще раз або перевірте доступ до теки даних.", "Could not save the language. Try again or check access to the data folder."),
         ["StopGame"]=("Зупинити Minecraft", "Stop Minecraft"),
         ["StopWarning"]=("За можливості закрий Minecraft через меню гри. Примусова зупинка завершує процес гри та його дочірні процеси й може призвести до втрати незбережених змін у світі.", "Close Minecraft through its game menu whenever possible. Forcing a stop ends the game and its child processes and may lose unsaved world changes."),
         ["StopAccept"]=("Я розумію ризик втрати незбережених змін", "I understand that unsaved changes may be lost"),

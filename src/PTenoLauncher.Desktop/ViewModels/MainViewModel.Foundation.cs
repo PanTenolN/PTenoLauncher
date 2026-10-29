@@ -89,7 +89,11 @@ public sealed partial class MainViewModel
         if (Application.Current is App app) app.Appearance.Apply(theme);
     }
     public Task SaveThemeAsync() => RunAsync(async ct => { ApplyTheme(); await services.Preferences.SetThemeAsync(CurrentTheme(), ct); Status = TextCatalog.Language == "en" ? "Theme saved." : TextCatalog.Get("Message034"); });
-    public Task SaveLanguageAsync() => RunAsync(async ct => { await services.Store.SetSettingAsync("ui.language", SelectedLanguage.Code, ct); });
+    public Task SaveLanguageAsync() => RunAsync(async ct =>
+    {
+        await services.Store.SetSettingAsync("ui.language", SelectedLanguage.Code, ct);
+        NeedsLanguageSelection = false;
+    });
     public async Task SaveAiAsync()
     {
         try { await services.Preferences.SetAiEnabledAsync(AiEnabled); Status = AiEnabled ? TextCatalog.Get("AiEnabledStatus") : TextCatalog.Get("Message035"); }
@@ -102,7 +106,7 @@ public sealed partial class MainViewModel
         CustomBackground = palette.Background; CustomSidebar = palette.Sidebar; CustomSurface = palette.Surface;
         CustomAccent = palette.Accent; CustomText = palette.Text; CustomRadius = palette.Radius; Animations = palette.Animations;
         SelectedTheme = theme.Theme; ApplyTheme();
-        SelectedLanguage = Languages.FirstOrDefault(l => l.Code == awaitLanguage) ?? Languages[0];
+        SelectedLanguage = Languages.FirstOrDefault(l => string.Equals(l.Code, awaitLanguage, StringComparison.OrdinalIgnoreCase)) ?? Languages[0];
         TextCatalog.Apply(SelectedLanguage.Code);
         AiEnabled = await services.Preferences.GetAiEnabledAsync(ct);
     }
