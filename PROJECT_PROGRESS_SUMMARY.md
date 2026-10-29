@@ -1,5 +1,13 @@
 # PTenoLauncher — стан модулів
 
+## Verified managed-Java preview - 2026-10-29
+
+Final release source: `e7b058cf31c32e7f3d44ee9b2acedb821e2c148e`; runtime implementation: `957636b2ec16c406c8749bf00aa3e439266e9ab1`. Windows CI **40833002559 SUCCESS**: https://github.com/PanTenolN/PTenoLauncher/actions/runs/40833002559 . Release build **0 errors/warnings**; **386/386 tests passed**, zero failed/errors/skipped/not-run. The real managed Java **8/17/21/25** matrix passed download/inventory/x64/version and zero-HTTP offline reuse for each major, Java 21 corruption detection/cached-archive repair and Java 17 inherited-option isolation. Synthetic data was preserved. Live Mojang Java metadata was reusable offline (observed 1.12.2→8, 1.20.1→17, 1.21.1→21, 26.3→25). `gameLaunched=false`.
+
+Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.0-preview.e7b058cf31c3 . Setup/Portable/Source/checksums were read back; package hashes match the build log. ZIP/source/progress checks and fresh Portable initialization passed. All 184 original / 189 current requirements and 44 module grades remain. Detailed evidence: `docs/JAVA_RUNTIME_CHECKPOINT.md`.
+
+The local Adoptium network failure remains explicitly failed/blocked evidence; the successful live checks ran on the Windows runner. Earlier run 40832409126 passed its Windows build/tests/runtime matrix but failed publication because added log paths changed artifact layout; the final source fixes that layout and retains Java report/logs under artifacts. This verified record supersedes historical pending-publication notes. Licensed Minecraft gameplay, Microsoft approval, live AI, native UI/DPI and current installer lifecycle remain unverified; no stable release is claimed. Next independent P0 block: historical virtual/mapped assets and launch arguments.
+
 ## Managed Java integrity and runtime verification - 2026-10-29
 
 Restored all 27 newer first-run-language source/report files from main 21eefdd57b2a95c786ea7ecd1601a8925eb85d51 after Git-blob comparison (only CRLF normalization differed); previous local files were backed up. The eight-language menu and 344-test baseline are preserved.
@@ -43,7 +51,7 @@ Actual prerelease: https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.
 | SQLite: налаштування, профілі, історія | Foundation | VERIFIED | 100% | Реальні ізольовані SQLite/файлові тести й перезавантаження UI | Міграції для нових функцій |
 | Microsoft Authentication | P0 | BLOCKED EXTERNALLY | 50% | Browser OAuth проходив; downstream HTTP 403; контрактні тести й DPAPI працюють; approval не підтверджено | Ліцензійні entitlement/profile/refresh/multi-account тести |
 | Minecraft Launch Engine | P0 | PARTIALLY VERIFIED | 50% | Vanilla/Fabric/Quilt підготовка; процес/консоль/exit/cancellation перевірені окремо; справжня гра NOT RUN | Авторизована гра, світ, збереження, повторний запуск |
-| Java Manager | P0 | PARTIALLY VERIFIED | 50% | Кероване завантаження й офлайн-повтор Java 21 перевірялися; 8/17/25 потребують окремих live-перевірок | Повна матриця Java та історичних версій |
+| Java Manager | P0 | PARTIALLY VERIFIED | 75% | Real Windows managed 8/17/21/25 install/version/offline reuse and Java 21 cached repair; 386 tests pass | Runtime update/removal UI and licensed-game integration |
 | Windows Installer | P0 | PARTIALLY VERIFIED | 75% | Реальний unsigned Setup у CI; lifecycle поточного payload не перевірений; попередній registry guard не обходиться | Ізольований Windows install/upgrade/reinstall/uninstall |
 | Portable | P0 | PARTIALLY VERIFIED | 75% | Self-contained ZIP, CRC, чисте розпакування й старт перевірені | Перенесення встановленої гри між шляхами |
 | Offline-First | P0 | PARTIALLY VERIFIED | 50% | Немає обов'язкової мережі при старті; кеш/локальні моди/налаштування; гра вимагає підтвердженого акаунта | Авторизована offline-гра для кожного loader |
