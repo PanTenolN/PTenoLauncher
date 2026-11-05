@@ -4,6 +4,9 @@ public static class ProfileRules
 {
     public static void Validate(GameProfile profile)
     {
+        if (profile.PreferredLoaderVersion is { } version && (profile.Loader == ModLoader.Vanilla ||
+            version.Length is 0 or > 100 || version.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '-' and not '_' and not '+')))
+            throw new ArgumentException("Invalid loader version.");
         if (profile.Id == Guid.Empty) throw new ArgumentException("Порожній ідентифікатор профілю.");
         if (string.IsNullOrWhiteSpace(profile.Name) || profile.Name.Length > 80 || profile.Name.Any(char.IsControl))
             throw new ArgumentException("Назва має містити від 1 до 80 символів без керівних знаків.");

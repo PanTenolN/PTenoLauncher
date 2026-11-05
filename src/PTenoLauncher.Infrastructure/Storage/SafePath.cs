@@ -26,7 +26,15 @@ public static class SafePath
     public static void RejectLinks(string path)
     {
         for (var current = Path.GetFullPath(path); current is not null; current = Path.GetDirectoryName(current))
-            if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+        {
+            // Exists follows the target and can return false for a dangling reparse point.
+            // Inspect the entry itself; missing ordinary entries are fine, access failures fail closed.
+            FileAttributes attributes;
+            try { attributes = File.GetAttributes(current); }
+            catch (FileNotFoundException) { continue; }
+            catch (DirectoryNotFoundException) { continue; }
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Посилання та junction у керованих шляхах не підтримуються.");
+        }
     }
 }

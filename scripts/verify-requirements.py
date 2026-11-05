@@ -10,7 +10,8 @@ if len(baseline) != 184 or len(set(baseline)) != 184:
 trace = (root / "REQUIREMENTS_TRACEABILITY.md").read_text(encoding="utf-8")
 rows = [line.split("|") for line in trace.splitlines() if re.match(r"^\| [A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+\b", line)]
 ids = [row[1].strip().split()[0] for row in rows]
-if len(ids) != len(set(ids)) or set(baseline) - set(ids):
+retained_additions = {"COMPAT-KILT-01", "COMPAT-CROSSLOADER-01", "MULTIPLAYER-PAPER-01", "MULTIPLAYER-PURPUR-01", "UI-FIRSTLANG"}
+if len(ids) != len(set(ids)) or (set(baseline) | retained_additions) - set(ids):
     raise ValueError("A requirement was removed or duplicated")
 statuses = {"Implemented & Verified", "Implemented, Not Verified", "Partially Implemented", "Not Implemented", "Blocked by External Requirements", "DEFERRED"}
 for row in rows:
@@ -36,6 +37,6 @@ for line in summary.splitlines():
     if cols[4] == "100%" and cols[3] != "VERIFIED":
         raise ValueError("Only a verified module may be marked 100%")
     modules.append(cols[1])
-if not modules or len(modules) != len(set(modules)):
+if len(modules) < 44 or len(modules) != len(set(modules)):
     raise ValueError("Missing or duplicate progress modules")
 print(f"Requirements PASS: {len(baseline)} original IDs retained; {len(ids)} current IDs; {len(modules)} graded modules")

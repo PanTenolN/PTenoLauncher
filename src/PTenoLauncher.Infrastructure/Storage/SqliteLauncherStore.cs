@@ -28,7 +28,10 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
             BEGIN IMMEDIATE;
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, loader INTEGER NOT NULL, memory INTEGER NOT NULL, java TEXT, created TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS profile_loader_choices(profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, minecraft TEXT NOT NULL, loader INTEGER NOT NULL, loader_version TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY, profile_id TEXT, at TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS download_history(id TEXT PRIMARY KEY, title TEXT NOT NULL, profile TEXT NOT NULL, at TEXT NOT NULL, result TEXT NOT NULL, pid INTEGER NOT NULL, process_start INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS download_history_details(id TEXT PRIMARY KEY REFERENCES download_history(id) ON DELETE CASCADE, detail TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS owned_artifacts(profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,relative_path TEXT PRIMARY KEY,kind TEXT NOT NULL);
             PRAGMA user_version=2;
             COMMIT;
@@ -38,29 +41,39 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
     public Task<IReadOnlyList<GameProfile>> GetProfilesAsync(CancellationToken ct = default) => Task.Run<IReadOnlyList<GameProfile>>(() =>
     {
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "SELECT id,name,version,loader,memory,java,created,archived FROM profiles ORDER BY created";
+        cmd.CommandText = """
+            SELECT p.id,p.name,p.version,p.loader,p.memory,p.java,p.created,p.archived,c.loader_version
+            FROM profiles p LEFT JOIN profile_loader_choices c ON c.profile_id=p.id AND c.minecraft=p.version AND c.loader=p.loader
+            ORDER BY p.created
+            """;
         using var reader = cmd.ExecuteReader(); var list = new List<GameProfile>();
         while (reader.Read())
         {
             var p = new GameProfile(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), (ModLoader)reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetString(5), DateTimeOffset.Parse(reader.GetString(6)), reader.GetBoolean(7));
+            p = p with { PreferredLoaderVersion = reader.IsDBNull(8) ? null : reader.GetString(8) };
             ProfileRules.Validate(p); list.Add(p);
         }
         return list;
     }, ct);
     public Task SaveProfileAsync(GameProfile profile, CancellationToken ct = default) => Task.Run(() =>
     {
-        ProfileRules.Validate(profile); paths.CreateProfile(profile);
+        ProfileRules.Validate(profile);
+        using var lease = new ProfileUsage(paths).Acquire(profile.Id);
         using var db = Open(); using var tx = db.BeginTransaction(); using var cmd = db.CreateCommand();
+        paths.CreateProfile(profile);
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO profiles VALUES($id,$name,$version,$loader,$memory,$java,$created,$archived)
             ON CONFLICT(id) DO UPDATE SET name=$name,version=$version,loader=$loader,memory=$memory,java=$java,archived=$archived;
+            DELETE FROM profile_loader_choices WHERE profile_id=$id;
+            INSERT INTO profile_loader_choices SELECT $id,$version,$loader,$loaderVersion WHERE $loaderVersion IS NOT NULL;
             INSERT INTO history(profile_id,at,action,details) VALUES($id,$at,'profile.saved',$name);
             """;
         cmd.Parameters.AddWithValue("$id", profile.Id.ToString("N"));
         cmd.Parameters.AddWithValue("$name", profile.Name.Trim());
         cmd.Parameters.AddWithValue("$version", profile.MinecraftVersion);
         cmd.Parameters.AddWithValue("$loader", (int)profile.Loader);
+        cmd.Parameters.AddWithValue("$loaderVersion", (object?)profile.PreferredLoaderVersion ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$memory", profile.MemoryMb);
         cmd.Parameters.AddWithValue("$java", (object?)profile.JavaPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$created", profile.CreatedAt.ToString("O"));

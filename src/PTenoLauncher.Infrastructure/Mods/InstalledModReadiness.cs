@@ -3,7 +3,7 @@ using PTenoLauncher.Core;
 using PTenoLauncher.Infrastructure.Storage;
 namespace PTenoLauncher.Infrastructure.Mods;
 
-public sealed record InstalledModReport(IReadOnlyList<ReadinessIssue> Issues, int VerifiedFiles);
+public sealed record InstalledModReport(IReadOnlyList<ReadinessIssue> Issues, int VerifiedFiles, NativeModSelection? NativeSelection = null);
 
 /// <summary>Bounded, read-only client-side inspection. Never uses a network service or runs JAR code.</summary>
 public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager inspector)
@@ -12,14 +12,27 @@ public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager i
     {
         if (profile.Loader == ModLoader.Vanilla) return new([], 0); // Vanilla does not load this directory.
         var issues = new List<ReadinessIssue>(); var mods = new List<ModInspection>(); int verified = 0;
+        NativeModSelection? native = null;
         void Add(string code, string text) => issues.Add(new(code, text));
         try
         {
             var transactions = SafePath.Join(paths.Profile(profile.Id), "transactions");
-            if (Directory.Exists(transactions) && Directory.EnumerateFiles(transactions, "mods-*.json").Any())
+            if (File.Exists(ModUpdateManager.PendingPath(paths, profile.Id)) || Directory.Exists(transactions) && Directory.EnumerateFiles(transactions, "mods-*.json").Any())
                 Add("mods.pending", "Є незавершене встановлення модів. Виконайте відновлення перед запуском.");
             var inventory = await new ModInventoryStore(paths).ReadAsync(profile.Id, ct);
             var known = (inventory?.Files ?? []).ToDictionary(f => f.RelativePath, StringComparer.OrdinalIgnoreCase);
+            var pins = await AtomicFile.ReadJsonAsync<ModPinSet>(SafePath.Join(paths.Profile(profile.Id), "mod-pins.json"), ct);
+            if (pins is not null)
+            {
+                if (pins.Schema != 1 || pins.ProfileId != profile.Id || pins.Pins is null || pins.Pins.Count > 128) throw new InvalidDataException("Invalid pins.");
+                new ModInventoryStore(paths).Validate(profile.Id, new(profile.Id, pins.Pins.Select(x => new InstalledModFile(x.File.Path, x.File.Sha256, x.File.Size)).ToArray()));
+                foreach (var pin in pins.Pins)
+                {
+                    if (pin.File.Sha512.Length != 128 || !pin.File.Sha512.All(Uri.IsHexDigit)) throw new InvalidDataException("Invalid pin hash.");
+                    if (!await Network.VerifiedDownloader.VerifyAsync(SafePath.Join(paths.Game(profile.Id), pin.File.Path), pin.File.Sha512, "SHA512", pin.File.Size, ct))
+                        Add("mods.pin.changed", "Точний закріплений файл змінено або втрачено: " + pin.File.Path);
+                }
+            }
             var directory = SafePath.Join(paths.Game(profile.Id), "mods");
             var files = Directory.Exists(directory) ? Directory.EnumerateFileSystemEntries(directory).Take(8193).ToArray() : [];
             if (files.Length > 8192) { Add("mods.limit.unknown", "Перевищено ліміт перевірки каталогу модів."); return new(issues, 0); }
@@ -57,12 +70,16 @@ public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager i
             var present = jars.Select(f => "mods/" + Path.GetFileName(f)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var missing in known.Keys.Where(k => !present.Contains(k)))
                 Add("mods.file.missing", "Відсутній встановлений мод: " + missing);
-            CheckDependencies(profile, receipt, mods, issues);
+            if (profile.Loader is ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge)
+            { native = await NativeNestedResolver.AnalyzeProfileAsync(paths, profile, receipt, mods, ct); issues.AddRange(native.Issues); }
+            else CheckDependencies(profile, receipt, mods, issues);
         }
         catch (Exception ex) when (IsFileError(ex)) { Add("mods.inventory.corrupt", "Не вдалося перевірити каталог або список контрольних хешів модів. Файли залишено без змін."); }
-        return new(issues.Distinct().ToArray(), verified);
+        return new(issues.Distinct().ToArray(), verified, native);
     }
     internal static bool IsFileError(Exception ex) => ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException;
+    internal static IReadOnlyList<ReadinessIssue> CheckFabricSet(GameProfile p, InstallationReceipt? receipt, List<ModInspection> all)
+    { var issues = new List<ReadinessIssue>(); CheckDependencies(p, receipt, all, issues); return issues; }
     private static void CheckDependencies(GameProfile profile, InstallationReceipt? receipt, List<ModInspection> all, List<ReadinessIssue> issues)
     {
         if (profile.Loader is ModLoader.Forge or ModLoader.NeoForge)
@@ -92,13 +109,23 @@ public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager i
         foreach (var mod in active)
         {
             if (mod.Id is not null) Supply(mod.Id, mod.Version, mod.FileName, true);
-            foreach (var provided in mod.ProvidedMods ?? []) Supply(provided.Id, provided.Version, mod.FileName, false);
+            foreach (var provided in (mod.FabricMetadata?.Aliases ?? []).DistinctBy(p => p.Id).Where(p => p.Id != mod.Id))
+                Supply(provided.Id, provided.Version, mod.FileName, true);
         }
         foreach (var mod in active)
         {
-            foreach (var id in mod.RequiredDependencies.Where(id => !versions.ContainsKey(id)))
+            var provided = mod.FabricMetadata is not null
+                ? LocalModManager.EffectiveFabricChildren(mod, roots).SelectMany(m => m.Aliases.Append(new(m.Id, m.Version)))
+                : mod.ProvidedMods ?? [];
+            foreach (var entry in provided) Supply(entry.Id, entry.Version, mod.FileName, false);
+        }
+        foreach (var mod in active)
+        {
+            var requirements = (mod.Requirements ?? []).Concat(LocalModManager.EffectiveFabricChildren(mod, roots).SelectMany(m => m.Requirements)).ToArray();
+            var required = mod.RequiredDependencies.Concat(requirements.Where(r => r.Kind == "required").Select(r => r.Id)).Distinct();
+            foreach (var id in required.Where(id => !versions.ContainsKey(id)))
                 issues.Add(new("mods.dependency.missing", mod.FileName + ": відсутня обов'язкова залежність " + id));
-            foreach (var requirement in mod.Requirements ?? [])
+            foreach (var requirement in requirements)
             {
                 if (!versions.TryGetValue(requirement.Id, out var actual)) continue;
                 var match = VersionConstraints.Or(requirement.Alternatives.Select(c => VersionConstraints.MatchFabric(actual, c)));

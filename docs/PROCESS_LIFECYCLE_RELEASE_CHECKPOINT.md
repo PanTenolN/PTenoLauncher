@@ -24,3 +24,4 @@ The local workspace is an existing source mirror without .git; remote main/histo
 Still unverified: Microsoft approval/entitlement/profile/refresh, licensed Vanilla/Fabric/Quilt gameplay and real disposable-world saves/reopening, real-game stop behavior, Java 8/17/25 live matrix, historical virtual/mapped assets, live OpenAI quality, translation-pack activation and the current installer install/upgrade/reinstall/uninstall lifecycle. Binaries remain unsigned. Never bypass the earlier installer registry ownership guard, authentication or licensing.
 
 Next independent P0 block: Java matrix, managed-runtime receipt/path/architecture integrity and historical asset/launch preparation. On approval, use HOME_TEST_CHECKLIST.md with disposable profiles/worlds. Continue remaining stages from ROADMAP.md; no stable release until verified P0 acceptance. Do not recreate the project.
+

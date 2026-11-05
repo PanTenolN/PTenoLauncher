@@ -14,7 +14,13 @@ using Xunit;
 namespace PTenoLauncher.Tests;
 public sealed class TestAppBuilder
 {
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UseHeadless(new AvaloniaHeadlessPlatformOptions());
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        var builder = AppBuilder.Configure<App>();
+        return string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PTENO_WORKSPACE_SCREENSHOTS"))
+            ? builder.UseHeadless(new AvaloniaHeadlessPlatformOptions())
+            : builder.UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+    }
 }
 public sealed class DesktopTests
 {
@@ -158,16 +164,18 @@ public sealed class DesktopTests
         var window=new MainWindow{DataContext=vm};window.Show();
         try
         {
-            vm.Page=LauncherPage.Mods;Assert.False(vm.IsBusy);Assert.NotNull(window.FindControl<Button>("ResolveModCartButton"));
+            vm.Page=LauncherPage.Mods;Assert.False(vm.IsBusy);
+            var dialog=new ModCatalogDialog(vm,p,review:true);dialog.Show(window);
+            Assert.NotNull(dialog.FindControl<Button>("ResolveModCartButton"));
             await vm.AddModsAsync([first]);Assert.True(vm.LastOperationSucceeded,vm.Status);await vm.ResolveCartAsync();Assert.True(vm.LastOperationSucceeded,vm.Status);
-            Assert.True(vm.NeedsUnknownAcceptance);Assert.True(window.FindControl<CheckBox>("UnknownModAcceptance")!.IsVisible);
-            vm.RemoteConfirmed=true;vm.UnknownSourceAccepted=true;
-            await vm.AddModsAsync([second]);Assert.False(vm.RemoteConfirmed);Assert.False(vm.UnknownSourceAccepted);
+            Assert.True(vm.NeedsUnknownAcceptance);Assert.True(dialog.FindControl<CheckBox>("UnknownModAcceptance")!.IsVisible);
+            vm.UnknownSourceAccepted=true;
+            await vm.AddModsAsync([second]);Assert.False(vm.CanCommitCatalog);Assert.False(vm.UnknownSourceAccepted);
             await vm.InstallCartCommand.ExecuteAsync();Assert.False(vm.LastOperationSucceeded);Assert.Empty(Directory.GetFiles(Path.Combine(ws.Paths.Game(p.Id),"mods")));
-            await vm.ResolveCartAsync();vm.RemoteConfirmed=true;
+            await vm.ResolveCartAsync();
             await vm.InstallCartCommand.ExecuteAsync();Assert.False(vm.LastOperationSucceeded);
             vm.UnknownSourceAccepted=true;await vm.InstallCartCommand.ExecuteAsync();Assert.True(vm.LastOperationSucceeded);
-            Assert.Equal(2,Directory.GetFiles(Path.Combine(ws.Paths.Game(p.Id),"mods")).Length);Assert.Empty(vm.Cart);Assert.False(vm.RemoteConfirmed);
+            Assert.Equal(2,Directory.GetFiles(Path.Combine(ws.Paths.Game(p.Id),"mods")).Length);Assert.Empty(vm.Cart);Assert.False(vm.CanCommitCatalog);
         }
         finally{window.Close();}
     }
@@ -183,14 +191,16 @@ public sealed class DesktopTests
         var window=new MainWindow{DataContext=vm};window.Show();
         try
         {
-            vm.Page=LauncherPage.Mods;window.UpdateLayout();
-            Assert.NotNull(window.FindControl<ItemsControl>("OptionalDependencyList"));
+            vm.Page=LauncherPage.Mods;var dialog=new ModCatalogDialog(vm,p,review:true);dialog.Show(window);dialog.UpdateLayout();
+            Assert.NotNull(dialog.FindControl<ItemsControl>("OptionalDependencyList"));
             var choice=Assert.Single(vm.OptionalChoices);Assert.False(choice.IsSelected);Assert.DoesNotContain(vm.RemoteEntries,e=>e.Version.ProjectId=="D");
-            var checkbox=window.GetVisualDescendants().OfType<CheckBox>().Single(b=>ReferenceEquals(b.DataContext,choice));
-            vm.RemoteConfirmed=true;checkbox.IsChecked=true;Assert.True(choice.IsSelected);Assert.False(vm.RemoteConfirmed);
-            await vm.InstallCartCommand.ExecuteAsync();Assert.False(vm.LastOperationSucceeded);
-            await vm.ResolveCartAsync();Assert.True(vm.LastOperationSucceeded,vm.Status);
-            Assert.Contains(vm.RemoteEntries,e=>e.Version.ProjectId=="D");Assert.True(Assert.Single(vm.OptionalChoices).IsSelected);Assert.False(vm.RemoteConfirmed);
+            var checkbox=dialog.GetVisualDescendants().OfType<CheckBox>().Single(b=>ReferenceEquals(b.DataContext,choice));
+            checkbox.IsChecked=true;Assert.True(choice.IsSelected);Assert.False(vm.CanCommitCatalog);
+            Assert.False(dialog.FindControl<Button>("InstallCombinedCartButton")!.IsEnabled);
+            for (var attempt = 0; attempt < 300 && (!vm.IsIdle || vm.RemoteEntries.All(e => e.Version.ProjectId != "D")); attempt++)
+                await Task.Delay(10);
+            Assert.True(vm.LastOperationSucceeded, vm.Status);
+            Assert.Contains(vm.RemoteEntries,e=>e.Version.ProjectId=="D");Assert.True(Assert.Single(vm.OptionalChoices).IsSelected);Assert.True(vm.CanCommitCatalog);
             await vm.ClearOptionalAsync();Assert.True(vm.LastOperationSucceeded,vm.Status);Assert.DoesNotContain(vm.RemoteEntries,e=>e.Version.ProjectId=="D");
             Assert.Empty(Directory.GetFiles(Path.Combine(ws.Paths.Game(p.Id),"mods")));
         }

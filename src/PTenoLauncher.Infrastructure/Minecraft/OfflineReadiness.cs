@@ -10,13 +10,17 @@ public sealed class OfflineReadiness(LauncherPaths paths, JavaManager java, Micr
     public async Task<ReadinessReport> CheckAsync(GameProfile profile, CancellationToken ct = default)
     {
         var issues = new List<ReadinessIssue>(); int verified = 0;
-        if (profile.Loader is not (ModLoader.Vanilla or ModLoader.Fabric or ModLoader.Quilt)) issues.Add(new("loader.unsupported", "Встановлення та запуск Mod Loader ще не реалізовано."));
         InstallationReceipt? receipt = null;
         try { receipt = await AtomicFile.ReadJsonAsync<InstallationReceipt>(paths.Receipt(profile.Id), ct); if (receipt is not null) ReceiptValidator.Validate(paths, receipt); }
         catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException) { receipt = null; issues.Add(new("manifest.corrupt", "Пошкоджено локальний опис встановлення.")); }
         if (receipt is null) issues.Add(new("game.missing", "Minecraft ще не встановлено для цього профілю."));
-        else
+        issues.AddRange(await Modpacks.MrpackRequirements.CheckAsync(paths, profile, receipt, ct));
+        if (profile.Loader is ModLoader.Forge or ModLoader.NeoForge && (receipt?.Loader != profile.Loader || receipt.Forge is null))
+            issues.Add(new("loader.unsupported", "Forge/NeoForge component preparation is incomplete. A supported verified processor installation is required."));
+        if (receipt is not null)
         {
+            if (profile.PreferredLoaderVersion is { } preferred && receipt.LoaderVersion != preferred)
+                issues.Add(new("loader.mismatch", "LoaderVersion"));
             if (receipt.Loader != profile.Loader) issues.Add(new("loader.mismatch", "Потрібно встановити вибраний Mod Loader або Vanilla для цього профілю."));
             if (receipt.Version != profile.MinecraftVersion) issues.Add(new("version.mismatch", "Встановлена версія відрізняється від налаштувань профілю."));
             foreach (var file in receipt.Files)
@@ -26,6 +30,9 @@ public sealed class OfflineReadiness(LauncherPaths paths, JavaManager java, Micr
                     issues.Add(new("file.invalid", $"Відсутній або пошкоджений файл: {file.RelativePath}"));
                 else verified++;
             }
+            try { issues.AddRange(await AssetManager.CheckAsync(paths, profile.Id, receipt, ct)); }
+            catch (Exception e) when (e is IOException or InvalidDataException or System.Text.Json.JsonException)
+            { issues.Add(new("manifest.corrupt", "Asset ownership metadata requires repair.")); }
         }
         if (string.IsNullOrWhiteSpace(profile.JavaPath)) issues.Add(new("java.missing", "Оберіть Java x64 для профілю."));
         else

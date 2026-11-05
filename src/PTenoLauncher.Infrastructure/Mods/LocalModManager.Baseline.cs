@@ -17,6 +17,7 @@ public sealed partial class LocalModManager
     }
     private async Task<ModBaselinePreview> BuildBaselinePreviewAsync(GameProfile profile, CancellationToken ct)
     {
+        ModUpdateManager.RequireNoPending(paths, profile.Id);
         if (profile.Loader == ModLoader.Vanilla) throw new InvalidOperationException("Vanilla не завантажує моди.");
         var transactions = SafePath.Join(paths.Profile(profile.Id), "transactions");
         var directory = SafePath.Join(paths.Game(profile.Id), "mods");
@@ -27,10 +28,14 @@ public sealed partial class LocalModManager
         var files = Directory.Exists(directory) ? Directory.EnumerateFiles(directory, "*.jar").Take(ModInventoryStore.MaximumFiles + 1).Order(StringComparer.Ordinal).ToArray() : [];
         if (files.Length > ModInventoryStore.MaximumFiles) throw new InvalidDataException("Перевищено ліміт 2048 модів.");
         var entries = new List<InstalledModFile>();
+        var previous = (prior?.Files ?? []).ToDictionary(file => file.RelativePath, StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
             var mod = await InspectAsync(file, ct);
-            entries.Add(new("mods/" + mod.FileName, mod.Sha256, mod.Size));
+            var relative = "mods/" + mod.FileName;
+            var origin = previous.TryGetValue(relative, out var priorFile) && priorFile.Sha256.Equals(mod.Sha256, StringComparison.OrdinalIgnoreCase)
+                ? priorFile.Origin : null;
+            entries.Add(new(relative, mod.Sha256, mod.Size, origin));
         }
         var present = entries.Select(e => e.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var removed = (prior?.Files ?? []).Where(f => !present.Contains(f.RelativePath)).Select(f => f.RelativePath).ToArray();

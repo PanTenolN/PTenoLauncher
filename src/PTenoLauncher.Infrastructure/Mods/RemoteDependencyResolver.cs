@@ -9,7 +9,7 @@ public sealed partial class RemoteDependencyResolver(IModCatalog catalog)
     private sealed record Need(string? Project, string? Version, string Reason);
     private sealed record Choice(CatalogModVersion Version, IReadOnlyList<string> Reasons);
     public async Task<DependencyResolution> ResolveAsync(GameProfile profile, IReadOnlyList<RemoteModRequest> roots,
-        IReadOnlyList<InstalledCatalogMod> installed, CancellationToken ct = default)
+        IReadOnlyList<InstalledCatalogMod> installed, CancellationToken ct = default, IReadOnlyDictionary<string, string>? preferredVersions = null)
     {
         if (profile.Loader == ModLoader.Vanilla) return new([], [], ["Для модів потрібен Mod Loader."], []);
         if (roots.Count is < 1 or > 128) return new([], [], ["Виберіть від 1 до 128 модів."], []);
@@ -71,7 +71,8 @@ public sealed partial class RemoteDependencyResolver(IModCatalog catalog)
                     lists[project.Id] = candidates = await catalog.GetVersionsAsync(project.Id, profile.MinecraftVersion, profile.Loader, ct);
             }
             var compatible = candidates.Where(v => v.ProjectId == project.Id && Compatible(v))
-                .OrderBy(v => v.Channel == "release" ? 0 : v.Channel == "beta" ? 1 : 2)
+                .OrderBy(v => preferredVersions?.GetValueOrDefault(v.ProjectId) == v.Id ? 0 : 1)
+                .ThenBy(v => v.Channel == "release" ? 0 : v.Channel == "beta" ? 1 : 2)
                 .ThenByDescending(v => v.Published).ThenBy(v => v.Id, StringComparer.Ordinal).ToArray();
             if (compatible.Length == 0) { Fail($"Немає сумісної версії {project.Title} для {profile.MinecraftVersion} / {loader}."); return null; }
             foreach (var candidate in compatible)

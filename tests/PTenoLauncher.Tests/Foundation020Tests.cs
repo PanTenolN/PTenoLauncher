@@ -97,7 +97,7 @@ public sealed class Foundation020Tests
         using var ws = new TestWorkspace(); await ws.Store.InitializeAsync(); var p = ws.Profile(); await ws.Store.SaveProfileAsync(p);
         var op = Guid.NewGuid(); var stage = SafePath.Join(ws.Paths.Root, $"trash/{op:N}"); Directory.CreateDirectory(stage);
         await AtomicFile.WriteJsonAsync(Path.Combine(stage, "deletion.json"), new {
-            Operation = op, ProfileId = p.Id, Moves = new[] { new { Source = $"instances/{p.Id:N}", Destination = $"trash/{op:N}/item-0", Directory = true } }
+            Operation = op, ProfileId = p.Id, Moves = new[] { new { Source = ws.Paths.ProfileRelative(p.Id), Destination = $"trash/{op:N}/item-0", Directory = true } }
         });
         Directory.Move(ws.Paths.Profile(p.Id), Path.Combine(stage, "item-0"));
         await new ProfileDeletionService(ws.Paths, ws.Store, new(ws.Paths)).RecoverAsync();

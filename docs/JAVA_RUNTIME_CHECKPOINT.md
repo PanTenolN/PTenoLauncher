@@ -1,5 +1,13 @@
 # Java runtime return point — 2026-10-29
 
+Latest local return point: **NATIVE_NESTED_CHECKPOINT.md** (576 total / 574 passed / 2 explicit not run; Release 0 errors/warnings). Results below are retained historical/scoped evidence; do not restore them over current native nested work. No new release was published.
+
+Latest source/results: **FORGE_EXECUTION_CHECKPOINT.md** (524 total / 522 passed / 2 explicit not run; Release 0 errors/warnings). The owner explicitly resumed development. Any earlier PAUSED instruction below records the older session only.
+
+Current local return point: **FORGE_EXECUTION_CHECKPOINT.md**. The owner resumed development; results below are historical. No new release was published.
+
+Current continuation: **HISTORICAL_ASSETS_CHECKPOINT.md** (local source, 2026-10-29). This Java matrix/386-case checkpoint is historical and was not rerun for the new asset block. No new release was published.
+
 **Created and developed with AI assistance (OpenAI Codex).**
 
 Verified release source: `e7b058cf31c32e7f3d44ee9b2acedb821e2c148e`. Runtime implementation commit: `957636b2ec16c406c8749bf00aa3e439266e9ab1`. Final workflow: **40833002559 SUCCESS**, https://github.com/PanTenolN/PTenoLauncher/actions/runs/40833002559 . Windows job 123311253225 and publish job 123312549638 both passed. Release build zero errors/warnings; **386/386 tests passed**, zero failed/errors/skipped/not-run; all 184 original / 189 current requirements and 44 graded modules remain. ZIP/source integrity and fresh Portable startup passed (initialized=True, gameLaunched=false).

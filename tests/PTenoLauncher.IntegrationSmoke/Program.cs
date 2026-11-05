@@ -4,6 +4,23 @@ using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
 
+// This controlled process probe does not create data, authenticate or execute Minecraft.
+if (args.FirstOrDefault() == "--argument-probe")
+{ Console.WriteLine(JsonSerializer.Serialize(args.Skip(1).ToArray())); return; }
+if (args.FirstOrDefault() == "--ai-native") { try { await PTenoLauncher.IntegrationSmoke.AiNativeProbe.RunAsync(); } catch(Exception error) { Console.Error.WriteLine(error); Environment.ExitCode=1; } return; }
+if (args.FirstOrDefault() is "--instance-native" or "--local-app-native") { try { await PTenoLauncher.IntegrationSmoke.InstanceNativeProbe.RunAsync(args[0] == "--local-app-native"); } catch(Exception error) { Console.Error.WriteLine(error); Environment.ExitCode=1; } return; }
+if (args.Length == 2 && args[0] == "--owned-cleanup")
+{
+    try {
+    var ownedRoot=Path.GetFullPath(args[1]);var parent=Path.Combine(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,".local","test-runs");
+    if(Directory.GetParent(ownedRoot)?.FullName!=parent)throw new IOException("Not an explicit owned operation root.");
+    SafePath.RejectLinks(ownedRoot);
+    var marker=await AtomicFile.ReadJsonAsync<PTenoLauncher.Testing.OwnedTestRoot.Marker>(SafePath.Join(ownedRoot,"owned-test-root.json"))
+        ?? await AtomicFile.ReadJsonAsync<PTenoLauncher.Testing.OwnedTestRoot.Marker>(SafePath.Join(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,"artifacts/test-lifecycle/"+Path.GetFileName(ownedRoot)+"/owned-test-root.json"))
+        ?? throw new IOException("Missing owned manifest.");
+    PTenoLauncher.Testing.OwnedTestRoot.CleanupOwned(marker,SafePath.Join(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,"artifacts/test-lifecycle/"+marker.Id));
+    }catch(Exception error){Console.Error.WriteLine(error);Environment.ExitCode=1;}return;
+}
 // Opt-in live network checks, never run by the unit test suite; no authentication or game execution.
 var root = Path.GetFullPath(args.Length > 0 ? args[0] : ".local/integration");
 var paths = new LauncherPaths(root); paths.Initialize();
@@ -11,6 +28,48 @@ var denyNetwork = args.Length > 1 && (args[1] is "--mods-offline" or "--local-de
 using var http = denyNetwork is null ? NetworkPolicy.CreateHttpClient() : new HttpClient(denyNetwork);
 var network = new NetworkPolicy(); var downloader = new VerifiedDownloader(http, network);
 var versions = new VersionManager(paths, downloader);
+if (args.Length > 1 && args[1] == "--zip-content-import")
+{
+    await PTenoLauncher.IntegrationSmoke.LocalZipImport.RunAsync(paths, args); return;
+}
+if (args.Length > 1 && args[1] == "--mrpack-import")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveMrpackImport.RunAsync(paths); return;
+}
+if (args.Length > 1 && args[1] == "--installed-update-preflight")
+{
+    var application = SafePath.Join(paths.Root, "isolated-application"); Directory.CreateDirectory(application);
+    string outcome, detail; string? nativeError = null;
+    try
+    {
+        if (!OperatingSystem.IsWindows()) throw new PTenoLauncher.Infrastructure.Updates.LauncherUpdateException("UpdaterInstalledBlocked");
+        _ = new PTenoLauncher.Infrastructure.Updates.WindowsInstalledUpdateRegistry().ReadOwned(application, paths.Root);
+        outcome = "UNEXPECTED_OWNERSHIP"; detail = "No installer started; manual review required.";
+    }
+    catch (PTenoLauncher.Infrastructure.Updates.LauncherUpdateException e) { outcome = "BLOCKED"; detail = e.Code; nativeError = e.InnerException?.Message; }
+    var result = new { result = outcome, stage = "registry-ownership-preflight", detail, nativeError, application, installationStarted = false, registryWrites = false, lifecycleVerified = false };
+    await AtomicFile.WriteJsonAsync(SafePath.Join(paths.Root, "installed-updater-preflight.json"), result); Console.WriteLine(JsonSerializer.Serialize(result, AtomicFile.JsonOptions)); return;
+}
+if (args.Length > 1 && args[1] == "--native-nested-artifact")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveNativeNestedArtifact.RunAsync(paths, args); return;
+}
+if (args.Length > 1 && args[1] == "--mod-updates")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveModUpdates.RunAsync(paths); return;
+}
+if (args.Length > 1 && args[1] == "--forge-install")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveForgeInstallation.RunAsync(paths, args); return;
+}
+if (args.Length > 1 && args[1] is "--forge-catalogs" or "--forge-components" or "--forge-components-offline")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveForgeComponents.RunAsync(paths, args); return;
+}
+if (args.Length > 1 && args[1] is "--historical-assets" or "--historical-assets-offline")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveHistoricalAssets.RunAsync(paths, args[1].EndsWith("-offline", StringComparison.Ordinal)); return;
+}
 if (args.Length > 1 && args[1] == "--java-matrix")
 {
     await PTenoLauncher.IntegrationSmoke.LiveJavaMatrix.RunAsync(paths); return;

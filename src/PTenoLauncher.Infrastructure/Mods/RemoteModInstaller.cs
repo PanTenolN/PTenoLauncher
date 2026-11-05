@@ -9,7 +9,8 @@ namespace PTenoLauncher.Infrastructure.Mods;
 public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherStore store, ModrinthClient catalog,
     VerifiedDownloader downloads, LocalModManager local)
 {
-    private sealed record Snapshot(string Fingerprint, IReadOnlyList<InstalledCatalogMod> Known, IReadOnlyList<string> Warnings);
+    private sealed record Snapshot(string Fingerprint, IReadOnlyList<InstalledCatalogMod> Known, IReadOnlyList<string> Warnings,
+        IReadOnlyDictionary<string, long> Artifacts);
     private async Task<Snapshot> ScanAsync(GameProfile profile, bool identify, CancellationToken ct)
     {
         var directory = SafePath.Join(paths.Game(profile.Id), "mods");
@@ -17,6 +18,7 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
         var files = Directory.EnumerateFiles(directory, "*.jar").Take(2049).OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToArray();
         if (files.Length > 2048) throw new InvalidDataException("Завелика кількість модів.");
         var known = new List<InstalledCatalogMod>(); var warnings = new List<string>(); var fingerprint = new StringBuilder();
+        var artifacts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
             SafePath.RejectLinks(file);
@@ -24,6 +26,7 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
             await using var stream = File.OpenRead(file);
             var hash = Convert.ToHexString(await SHA512.HashDataAsync(stream, ct)).ToLowerInvariant();
             fingerprint.Append(Path.GetFileName(file)).Append(':').Append(hash).Append('\n');
+            artifacts[hash] = stream.Length;
             if (!identify) continue;
             try
             {
@@ -34,7 +37,29 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
             catch (Exception ex) when (ex is InvalidDataException or HttpRequestException)
             { warnings.Add(Path.GetFileName(file) + ": ідентифікація недоступна; сумісність невідома."); }
         }
-        return new(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint.ToString()))), known, warnings);
+        return new(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprint.ToString()))), known, warnings, artifacts);
+    }
+    internal static IEnumerable<ModPlanEntry> DistinctArtifacts(IEnumerable<ModPlanEntry> entries) =>
+        entries.GroupBy(e => e.Version.File.Sha512, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First() with { Reason = string.Join("; ", group.Select(e => e.Reason).Distinct()) });
+
+    private static DependencyResolution WithInstalledArtifacts(DependencyResolution resolution, Snapshot snapshot)
+    {
+        var blockers = resolution.Blockers.ToList();
+        foreach (var group in resolution.Entries.GroupBy(e => e.Version.File.Sha512, StringComparer.OrdinalIgnoreCase))
+        {
+            var size = group.First().Version.File.Size;
+            if (group.Any(e => e.Version.File.Size != size) || snapshot.Artifacts.TryGetValue(group.Key, out var actual) && actual != size)
+                blockers.Add("Несумісні розміри файла в метаданих Modrinth: " + group.First().Version.File.Name);
+        }
+        return resolution with
+        {
+            Entries = resolution.Entries.Select(e => e with
+            {
+                AlreadyInstalled = e.AlreadyInstalled || snapshot.Artifacts.ContainsKey(e.Version.File.Sha512)
+            }).ToArray(),
+            Blockers = blockers
+        };
     }
     public async Task<RemoteInstallPlan> PreviewAsync(GameProfile profile, IReadOnlyList<RemoteModRequest> requests, CancellationToken ct = default)
     {
@@ -43,7 +68,7 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
         catalog.BeginOperation();
         var snapshot = await ScanAsync(profile, true, ct);
         var resolution = await new RemoteDependencyResolver(catalog).ResolveAsync(profile, requests, snapshot.Known, ct);
-        resolution = resolution with { Warnings = resolution.Warnings.Concat(snapshot.Warnings).ToArray() };
+        resolution = WithInstalledArtifacts(resolution, snapshot) with { Warnings = resolution.Warnings.Concat(snapshot.Warnings).ToArray() };
         return new(profile.Id, profile.MinecraftVersion, profile.Loader, snapshot.Fingerprint, resolution, catalog.UsedCache);
     }
     public async Task InstallAsync(GameProfile profile, RemoteInstallPlan plan, bool confirmed,
@@ -58,13 +83,13 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
         if ((await ScanAsync(profile, false, ct)).Fingerprint != plan.InstalledFingerprint)
             throw new InvalidOperationException("Моди профілю змінилися. Повторно розрахуйте кошик.");
         var cart = new List<ModCartItem>();
-        foreach (var entry in plan.Resolution.Entries.Where(e => !e.AlreadyInstalled))
+        foreach (var entry in DistinctArtifacts(plan.Resolution.Entries.Where(e => !e.AlreadyInstalled)))
         {
             var file = entry.Version.File;
             var destination = SafePath.Join(paths.Cache, $"modrinth/files/{file.Sha512}/{file.Name}");
             await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
             var inspection = await local.InspectAsync(destination, ct);
-            cart.Add(new(destination, inspection with { SourceStatus = "Modrinth" }));
+            cart.Add(new(destination, inspection with { SourceStatus = "Modrinth" }, entry.Reason, entry.Title));
         }
         if ((await ScanAsync(profile, false, ct)).Fingerprint != plan.InstalledFingerprint)
             throw new InvalidOperationException("Локальні моди змінилися під час завантаження. Повторіть перевірку.");

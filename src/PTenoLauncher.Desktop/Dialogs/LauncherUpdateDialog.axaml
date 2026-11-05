@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.LauncherUpdateDialog" Title="{DynamicResource Text.UpdaterTitle}"
+        Width="590" Height="460" MinWidth="420" MinHeight="360" WindowStartupLocation="CenterOwner" CanResize="True">
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="24" RowSpacing="14">
+    <TextBlock Text="{DynamicResource Text.UpdaterTitle}" FontSize="21" FontWeight="SemiBold"/>
+    <TextBlock Name="LauncherUpdateSummary" Grid.Row="1" Text="{Binding LauncherUpdateSummary}" TextWrapping="Wrap"/>
+    <ScrollViewer Grid.Row="2"><TextBlock Text="{Binding LauncherUpdateChanges}" TextWrapping="Wrap"/></ScrollViewer>
+    <StackPanel Grid.Row="3" Spacing="8">
+      <TextBlock Name="LauncherUpdateStatus" Text="{Binding LauncherUpdateStatus}" TextWrapping="Wrap"/>
+      <TextBlock Text="{Binding LauncherUpdateProgressText}" Classes="secondary"/>
+      <ProgressBar Name="LauncherUpdateProgress" Minimum="0" Maximum="100" Value="{Binding LauncherUpdateProgress}" Height="5"/>
+    </StackPanel>
+    <WrapPanel Grid.Row="4" HorizontalAlignment="Right">
+      <Button Name="LauncherUpdateCancel" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}" Margin="0,0,10,0"/>
+      <Button Name="LauncherUpdateLater" Content="{DynamicResource Text.UpdaterLater}" Click="Later" IsEnabled="{Binding IsIdle}" Margin="0,0,10,0"/>
+      <Button Name="LauncherUpdateApply" Content="{Binding LauncherUpdateButtonText}" Click="Update" IsEnabled="{Binding IsIdle}" Classes="primary"/>
+    </WrapPanel>
+  </Grid>
+</Window>

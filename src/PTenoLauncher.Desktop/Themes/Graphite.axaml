@@ -4,5 +4,19 @@
   <SolidColorBrush x:Key="BorderBrush">#353A40</SolidColorBrush><SolidColorBrush x:Key="TextBrush">#E5E7EB</SolidColorBrush>
   <SolidColorBrush x:Key="SecondaryBrush">#9CA3AF</SolidColorBrush><SolidColorBrush x:Key="AccentBrush">#A3B3C7</SolidColorBrush>
   <SolidColorBrush x:Key="AccentTextBrush">#111315</SolidColorBrush><SolidColorBrush x:Key="DangerBrush">#D88D8D</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionBrush">#8999AD</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionPrimaryBrush">#A3B3C7</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionTextBrush">#111315</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionBorderBrush">#8797AB</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionHoverBrush">#AFBED0</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionPressedBrush">#93A3B7</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionFocusBrush">#4C5A6A</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionDisabledBrush">#22262D</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionDisabledTextBrush">#9AA5B3</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionDisabledBorderBrush">#4A535F</SolidColorBrush>
+  <SolidColorBrush x:Key="ActionDangerBrush">#551E24</SolidColorBrush>
+  <SolidColorBrush x:Key="CheckboxOutlineBrush">#808080</SolidColorBrush>
+  <SolidColorBrush x:Key="CheckboxHighlightBrush">#303030</SolidColorBrush>
+  <SolidColorBrush x:Key="CheckboxCheckedBrush">#555555</SolidColorBrush>
   <CornerRadius x:Key="ControlRadius">6</CornerRadius>
 </ResourceDictionary>

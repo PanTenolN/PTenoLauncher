@@ -8,7 +8,7 @@ using Xunit;
 namespace PTenoLauncher.Tests;
 public sealed class ModrinthIntegrationTests
 {
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public NetworkPolicy Network { get; } = new();
         public StubHandler Handler { get; }
@@ -19,33 +19,52 @@ public sealed class ModrinthIntegrationTests
         public string? BadFileName { get; set; }
         public string? BadUrl { get; set; }
         public int CdnRequests { get; private set; }
+        public Action? BeforeFirstVersionResponse { get; set; }
         private readonly Dictionary<string,byte[]> bytes = new();
         private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) {Content=new StringContent(JsonSerializer.Serialize(value))};
-        public Fixture(TestWorkspace ws)
+        public Fixture(TestWorkspace ws, bool conflictingConfig = false, bool sharedArtifacts = false)
         {
-            foreach(var id in new[]{"A","B"})
+            foreach(var id in sharedArtifacts ? new[]{"A","B","C","D"} : ["A","B"])
             {
                 var path=Path.Combine(ws.Paths.Root,id+".jar");
-                SecurityAndModsTests.CreateJar(path,id.ToLowerInvariant(),id=="A" ? """{"b":">=1.0.0"}""" : "{}");
+                SecurityAndModsTests.CreateJar(path, conflictingConfig ? "mezz_config" : id.ToLowerInvariant(),
+                    id=="A" && !conflictingConfig ? """{"b":">=1.0.0"}""" : "{}", conflictingConfig && id == "B" ? "2.0.0" : "1.0.0");
                 bytes[id]=File.ReadAllBytes(path);
             }
+            if (sharedArtifacts) bytes["D"] = bytes["B"];
+            object Dependency(string project) => new {project_id=project,version_id=(string?)null,dependency_type="required"};
             object Version(string id) => new {
-                id=id+"1",project_id=id,version_number="1.0.0",name=id+" release",date_published="2026-01-01T00:00:00Z",version_type="release",status="listed",
+                id=id+"1",project_id=id,version_number=conflictingConfig && id == "B" ? "2.0.0" : "1.0.0",name=id+" release",date_published="2026-01-01T00:00:00Z",version_type="release",status="listed",
                 game_versions=new[]{"1.21.1"},loaders=new[]{"fabric"},
-                dependencies=id=="A" ? new[]{new {project_id="B",version_id=(string?)null,dependency_type="required"}} : [],
+                dependencies=id=="A" && !conflictingConfig ? new[]{Dependency("B")} : id=="C" ? [Dependency("B"), Dependency("D")] : [],
                 files=new[]{new {filename=BadFileName??id+".jar",url=BadUrl??"https://cdn.modrinth.com/data/"+id+".jar",size=bytes[id].Length,primary=true,hashes=new{sha512=Convert.ToHexString(SHA512.HashData(bytes[id])).ToLowerInvariant()}}}
             };
             Handler=new StubHandler(request => {
                 var path=request.RequestUri!.AbsolutePath;
+                if(path=="/v2/search" && request.RequestUri.Query.Contains("query=JEI", StringComparison.Ordinal)) return Json(new { hits = new[] {
+                    new { project_id="A", slug="jei", title="Just Enough Items (fixture)", description="Fixture root", icon_url=(string?)"https://cdn.modrinth.com/data/test-icon.png" },
+                    new { project_id="B", slug="b", title="Fixture dependency", description="Second result", icon_url=(string?)null }
+                } });
+                if(path=="/v2/search") return Json(new { hits = new[] {
+                    new { project_id="A", slug="a", title="Mod A", description="Fixture root", project_type="mod", client_side="required" }
+                } });
                 if(request.RequestUri.Host=="cdn.modrinth.com")
                 {
+                    if (path == "/data/test-icon.png") return new(HttpStatusCode.OK) { Content = new ByteArrayContent(
+                        Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4mKdBEmIY1TCqYfhqAAAVwXcQiykkaAAAAABJRU5ErkJggg==")) };
                     CdnRequests++;var body=bytes[Path.GetFileNameWithoutExtension(path)].ToArray();if(Tamper)body[^1]^=1;
                     return new(HttpStatusCode.OK){Content=new ByteArrayContent(body)};
                 }
                 foreach(var id in bytes.Keys)
                 {
                     if(path=="/v2/project/"+id) return Json(new{id,slug=id,title="Mod "+id,project_type="mod",client_side="required"});
-                    if(path=="/v2/project/"+id+"/version") return Json(new[]{Version(id)});
+                    if(path=="/v2/project/"+id+"/version")
+                    {
+                        var before = BeforeFirstVersionResponse;
+                        BeforeFirstVersionResponse = null;
+                        before?.Invoke();
+                        return Json(new[]{Version(id)});
+                    }
                     if(path=="/v2/version/"+id+"1") return Json(Version(id));
                     if(path=="/v2/version_file/"+Convert.ToHexString(SHA512.HashData(bytes[id])).ToLowerInvariant()) return Json(Version(id));
                 }
@@ -55,6 +74,26 @@ public sealed class ModrinthIntegrationTests
             Installer=new(ws.Paths,ws.Store,Catalog,download,new(ws.Paths,ws.Store));
         }
         public void Dispose()=>http.Dispose();
+    }
+    [Fact] public async Task SharedRequiredDependencyAndIdenticalCatalogArtifactsAreDownloadedOnlyOnce()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric);
+        await ws.Store.SaveProfileAsync(profile);
+        using var fixture = new Fixture(ws, sharedArtifacts: true);
+        var plan = await fixture.Installer.PreviewLocalAsync(profile, [], [new("A", "A1"), new("C", "C1")]);
+        Assert.True(plan.CanInstall);
+        var shared = Assert.Single(plan.Downloads, e => e.Version.ProjectId is "B" or "D");
+        Assert.Contains("Mod A", shared.Reason);
+        Assert.Contains("Mod C", shared.Reason);
+        Assert.Equal(3, plan.Downloads.Count());
+        await fixture.Installer.InstallLocalAsync(profile, plan, true, false);
+        Assert.Equal(3, fixture.CdnRequests);
+        Assert.Equal(3, Directory.GetFiles(Path.Combine(ws.Paths.Game(profile.Id), "mods"), "*.jar").Length);
+        var repeated = await fixture.Installer.PreviewLocalAsync(profile, [], [new("A", "A1"), new("C", "C1")]);
+        Assert.True(repeated.CanInstall);
+        Assert.Empty(repeated.Downloads);
     }
     [Fact] public async Task PreviewDownloadInstallIdentityAndOfflineReuseWorkWithoutAi()
     {

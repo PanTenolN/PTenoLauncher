@@ -37,5 +37,24 @@ public sealed class AppearanceManager(Application app)
         app.Resources["AccentTextBrush"] = new SolidColorBrush((accent.R * .299 + accent.G * .587 + accent.B * .114) > 145 ? Color.Parse("#111315") : Colors.White);
         app.Resources["ControlRadius"] = new CornerRadius(palette.Radius);
         app.Resources["MotionDuration"] = palette.Animations ? TimeSpan.FromMilliseconds(120) : TimeSpan.Zero;
+        ApplyActionPalette(light || current.Theme == LauncherTheme.Custom && IsLight(Color.Parse(palette.Surface)));
+    }
+
+    private static bool IsLight(Color color) => (color.R * .299 + color.G * .587 + color.B * .114) > 145;
+
+    private void ApplyActionPalette(bool light)
+    {
+        void Brush(string key, string dark, string bright) =>
+            app.Resources[key] = new SolidColorBrush(Color.Parse(light ? bright : dark));
+
+        Brush("ActionDisabledBrush", "#22262D", "#ECEFF3");
+        Brush("ActionDisabledTextBrush", "#9AA5B3", "#657183");
+        Brush("ActionDisabledBorderBrush", "#4A535F", "#A1ACBB");
+        Brush("CheckboxOutlineBrush", "#808080", "#6D6D6D");
+        Brush("CheckboxHighlightBrush", "#303030", "#DFDFDF");
+        Brush("CheckboxCheckedBrush", "#555555", "#555555");
+        Brush("ConsoleWarningBrush", "#FFD166", "#715000");
+        Brush("ConsoleErrorBrush", "#FF9098", "#A01328");
+        Brush("ConsoleVerboseBrush", "#A7B0BC", "#505C6A");
     }
 }

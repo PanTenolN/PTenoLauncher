@@ -1,14 +1,20 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Infrastructure.Diagnostics;
 
-public static class LiveProcessRunner
+public static partial class LiveProcessRunner
 {
+    public const string TranscriptLimitNotice = "Console transcript reached its 10 MiB limit. Further process output is visible live only.";
+    [GeneratedRegex(@"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\)|[ -/]*[@-Z\\-_])|[\x00-\x08\x0B-\x1F\x7F]")]
+    private static partial Regex TerminalControls();
+
     public static async Task<int> RunAsync(ProcessStartInfo info, string logFile, Func<Process, Task>? started = null,
-        IProgress<string>? output = null, IReadOnlyList<string>? secrets = null, CancellationToken ct = default)
+        IProgress<string>? output = null, IReadOnlyList<string>? secrets = null, CancellationToken ct = default,
+        bool formatMinecraftLog = false)
     {
         ct.ThrowIfCancellationRequested();
         info.UseShellExecute = false; info.CreateNoWindow = true;
@@ -19,38 +25,97 @@ public static class LiveProcessRunner
         using var process = Process.Start(info) ?? throw new IOException("Process failed to start.");
         using var gate = new SemaphoreSlim(1, 1);
         using var readers = new CancellationTokenSource();
+        using var progressStop = new CancellationTokenSource();
         long bytes = 0, lastReport = 0;
-        int omitted = 0;
+        const long transcriptLimit = 10 * 1024 * 1024;
+        var limitReached = false;
+        var pending = new List<string>();
         bool drainExpired = false;
         var pumpFailure = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
-        async Task Pump(StreamReader reader, string channel)
+        async Task ReportPendingAsync()
         {
+            if (pending.Count == 0) return;
+            await writer.FlushAsync();
+            output!.Report(string.Join('\n', pending));
+            pending.Clear();
+            lastReport = Environment.TickCount64;
+        }
+        async Task FlushLiveAsync()
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
             try
             {
-                await foreach (var raw in ReadBoundedLinesAsync(reader, ct: readers.Token))
+                while (await timer.WaitForNextTickAsync(progressStop.Token))
                 {
-                    var line = raw;
-                    foreach (var secret in secrets ?? [])
-                        if (secret.Length >= 8) line = line.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
-                    line = LauncherLog.Redact(line);
-                    await gate.WaitAsync();
-                    try
-                    {
-                        var text = $"{DateTimeOffset.UtcNow:HH:mm:ss} [{channel}] {line}";
-                        var size = Encoding.UTF8.GetByteCount(text) + 2;
-                        if (bytes + size <= 10 * 1024 * 1024) { await writer.WriteLineAsync(text); bytes += size; }
-                        var now = Environment.TickCount64;
-                        if (now - lastReport >= 50)
-                        {
-                            output?.Report(omitted > 0 ? $"[{omitted} console lines omitted from live view]\n{text}" : text);
-                            omitted = 0; lastReport = now;
-                        }
-                        else omitted++;
-                    }
+                    await gate.WaitAsync(progressStop.Token);
+                    try { await ReportPendingAsync(); }
                     finally { gate.Release(); }
                 }
             }
+            catch (OperationCanceledException) when (progressStop.IsCancellationRequested) { }
+            catch (Exception ex) { pumpFailure.TrySetResult(ex); throw; }
+        }
+        var live = output is null ? Task.CompletedTask : FlushLiveAsync();
+        string Redact(string raw)
+        {
+            var line = raw;
+            foreach (var secret in secrets ?? [])
+            {
+                if (secret.Length < 8) continue;
+                line = line.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+                if (formatMinecraftLog && System.Security.SecurityElement.Escape(secret) is { } escaped && escaped != secret)
+                    line = line.Replace(escaped, "[REDACTED]", StringComparison.Ordinal);
+            }
+            return LauncherLog.Redact(line);
+        }
+        async Task RecordAsync(IEnumerable<string> lines, string channel)
+        {
+            using var incoming = lines.GetEnumerator();
+            if (!incoming.MoveNext()) return;
+            await gate.WaitAsync();
+            try
+            {
+                var time = DateTimeOffset.UtcNow;
+                do
+                {
+                    var text = $"{time:HH:mm:ss} [{channel}] {Redact(incoming.Current)}";
+                    var size = Encoding.UTF8.GetByteCount(text) + Encoding.UTF8.GetByteCount(writer.NewLine);
+                    if (!limitReached && bytes + size <= transcriptLimit)
+                    {
+                        await writer.WriteLineAsync(text);
+                        bytes += size;
+                    }
+                    else if (!limitReached)
+                    {
+                        limitReached = true;
+                        await writer.WriteLineAsync(TranscriptLimitNotice);
+                        if (output is not null) pending.Add(TranscriptLimitNotice);
+                    }
+                    if (output is not null)
+                    {
+                        pending.Add(text);
+                        if (pending.Count >= 64 || Environment.TickCount64 - lastReport >= 50) await ReportPendingAsync();
+                    }
+                }
+                while (incoming.MoveNext());
+            }
+            finally { gate.Release(); }
+        }
+        async Task Pump(StreamReader reader, string channel)
+        {
+            var events = formatMinecraftLog ? new MinecraftLogEvents() : null;
+            try
+            {
+                var lineLimit = formatMinecraftLog ? MinecraftLogEvents.EventLimit : 8192;
+                await foreach (var raw in ReadBoundedLinesAsync(reader, lineLimit, readers.Token))
+                    await RecordAsync(events?.Accept(TerminalControls().Replace(raw, "")) ?? [raw], channel);
+            }
             catch (OperationCanceledException) when (readers.IsCancellationRequested) { drainExpired = true; }
+            catch (Exception ex) { pumpFailure.TrySetResult(ex); throw; }
+            try
+            {
+                if (events is not null) await RecordAsync(events.Finish(), channel);
+            }
             catch (Exception ex) { pumpFailure.TrySetResult(ex); throw; }
         }
         var pumps = Task.WhenAll(Pump(process.StandardOutput, "out"), Pump(process.StandardError, "err"));
@@ -86,6 +151,9 @@ public static class LiveProcessRunner
             // A descendant may retain inherited output after the parent exits.
             readers.CancelAfter(TimeSpan.FromSeconds(5));
             await pumps;
+            await progressStop.CancelAsync();
+            await live;
+            await ReportPendingAsync();
             if (drainExpired) await writer.WriteLineAsync("Console drain timed out; inherited output was closed.");
             if (ct.IsCancellationRequested) await writer.WriteLineAsync("Process stopped by an explicit cancellation request.");
             var exit = $"Exit code: {process.ExitCode}";
@@ -103,8 +171,10 @@ public static class LiveProcessRunner
             finally
             {
                 await readers.CancelAsync();
+                await progressStop.CancelAsync();
                 // Observe both pumps before disposing their writer and process.
                 try { await pumps; } catch { /* The original pump error propagates above. */ }
+                try { await live; } catch { /* The original live output error propagates above. */ }
             }
         }
     }

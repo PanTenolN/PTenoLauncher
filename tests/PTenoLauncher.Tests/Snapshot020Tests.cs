@@ -20,7 +20,8 @@ public sealed class Snapshot020Tests
         await AtomicFile.WriteJsonAsync(SafePath.Join(ws.Paths.Cache,"metadata/catalog.json"),new VersionCatalog(date,"1.21.1",entries,"test-snapshot"));
         using var services = new LauncherServices(ws.Paths); var vm = new MainViewModel(services);
         await vm.InitializeAsync(); vm.Offline = true; vm.VersionId = "1.20.4";
-        Assert.Contains(vm.Versions,v=>v.Type=="snapshot");
+        Assert.Single(vm.Versions); // New profiles start with releases only.
+        vm.ShowSnapshots=true; Assert.Contains(vm.Versions,v=>v.Type=="snapshot");
         vm.ShowSnapshots=false; Assert.Single(vm.Versions);
         vm.ShowHistorical=true; Assert.Equal(2,vm.Versions.Count);
         vm.ShowSnapshots=true; Assert.Equal(3,vm.Versions.Count);

@@ -5,6 +5,7 @@ using System.Text.Json;
 using PTenoLauncher.Core;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
+using PTenoLauncher.Infrastructure.Minecraft;
 
 namespace PTenoLauncher.Infrastructure.Mods;
 
@@ -15,7 +16,9 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
     private readonly SemaphoreSlim requestGate = new(1, 1);
     private DateTimeOffset lastRequest;
     public bool UsedCache { get; private set; }
-    public void BeginOperation() => UsedCache = false;
+    public DateTimeOffset? OldestMetadataAt { get; private set; }
+    public void BeginOperation() { UsedCache = false; OldestMetadataAt = null; }
+    private void Observe(DateTimeOffset at) => OldestMetadataAt = OldestMetadataAt is null || at < OldestMetadataAt ? at : OldestMetadataAt;
     private const int MaxMetadata = 8 * 1024 * 1024;
     private static string Identifier(string value)
     {
@@ -49,7 +52,7 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
             if (network.Offline || cached is not null && DateTimeOffset.UtcNow - cached.FetchedAt < TimeSpan.FromMinutes(15))
             {
                 if (cached is null) throw new InvalidDataException("Немає кешованих метаданих Modrinth. Під'єднайте інтернет для цієї операції.");
-                UsedCache = true; return JsonDocument.Parse(cached.Body);
+                UsedCache = true; Observe(cached.FetchedAt); return JsonDocument.Parse(cached.Body);
             }
             byte[] body;
             try
@@ -63,22 +66,42 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
             }
             catch (Exception ex) when (!ct.IsCancellationRequested && cached is not null && ex is HttpRequestException or TaskCanceledException)
             {
-                UsedCache = true; return JsonDocument.Parse(cached.Body);
+                UsedCache = true; Observe(cached.FetchedAt); return JsonDocument.Parse(cached.Body);
             }
             using (JsonDocument.Parse(body)) { } // Never commit malformed JSON.
             await CacheAsync(route, body, ct);
+            Observe(DateTimeOffset.UtcNow);
             return JsonDocument.Parse(body);
         }
         finally { requestGate.Release(); }
     }
-    public async Task<IReadOnlyList<CatalogSearchHit>> SearchAsync(string query, string minecraft, ModLoader loader, CancellationToken ct = default)
+    public Task<IReadOnlyList<CatalogSearchHit>> SearchAsync(string query, string minecraft, ModLoader loader, CancellationToken ct = default)
+        => SearchTypedAsync(query, minecraft, "mod", LoaderName(loader), ct);
+
+    private static string ContentType(ProfileContentKind kind) => kind switch
+    {
+        ProfileContentKind.ResourcePacks => "resourcepack",
+        ProfileContentKind.Shaders => "shader",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    public Task<IReadOnlyList<CatalogSearchHit>> SearchContentAsync(string query, string minecraft, ProfileContentKind kind, CancellationToken ct = default)
+        => SearchTypedAsync(query, minecraft, ContentType(kind), null, ct);
+
+    private async Task<IReadOnlyList<CatalogSearchHit>> SearchTypedAsync(string query, string minecraft, string type, string? loader, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(query) || query.Length > 200) throw new ArgumentException("Введіть запит до 200 символів.");
-        var facets = JsonSerializer.Serialize(new[] { new[] { "project_type:mod" }, new[] { "versions:" + minecraft }, new[] { "categories:" + LoaderName(loader) } });
-        using var json = await GetAsync("search?query=" + Uri.EscapeDataString(query.Trim()) + "&limit=20&facets=" + Uri.EscapeDataString(facets), ct);
+        var facets = new List<string[]> { new[] { "project_type:" + type }, new[] { "versions:" + minecraft } };
+        if (loader is not null) facets.Add(["categories:" + loader]);
+        using var json = await GetAsync("search?query=" + Uri.EscapeDataString(query.Trim()) + "&limit=20&facets=" + Uri.EscapeDataString(JsonSerializer.Serialize(facets)), ct);
         return json.RootElement.GetProperty("hits").EnumerateArray().Select(h =>
             new CatalogSearchHit(h.GetProperty("project_id").GetString()!, h.GetProperty("slug").GetString()!,
-                h.GetProperty("title").GetString()!, h.GetProperty("description").GetString()!)).ToArray();
+                h.GetProperty("title").GetString()!, h.GetProperty("description").GetString()!, GetString(h, "icon_url"))).ToArray();
+    }
+    public async Task<byte[]?> GetIconAsync(CatalogSearchHit hit, CancellationToken ct)
+    {
+        if (network.Offline || !Uri.TryCreate(hit.IconUrl, UriKind.Absolute, out var uri) || uri.Host != "cdn.modrinth.com") return null;
+        return await downloads.GetBytesAsync(uri, 256 * 1024, ct, DownloadSource.Modrinth);
     }
     public async Task<CatalogProject> GetProjectAsync(string id, CancellationToken ct = default)
     {
@@ -87,8 +110,9 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
         var r = doc.RootElement;
         if (r.ValueKind == JsonValueKind.Null) throw new InvalidDataException("Проєкт Modrinth не знайдено: " + id);
         if (r.GetProperty("project_type").GetString() != "mod") throw new InvalidDataException("Цей каталог підтримує лише моди.");
+        var license = r.TryGetProperty("license", out var policy) && policy.ValueKind == JsonValueKind.Object ? GetString(policy, "id") : null;
         var p = new CatalogProject(r.GetProperty("id").GetString()!, r.GetProperty("slug").GetString()!,
-            r.GetProperty("title").GetString()!, !r.TryGetProperty("client_side", out var c) || c.GetString() != "unsupported");
+            r.GetProperty("title").GetString()!, !r.TryGetProperty("client_side", out var c) || c.GetString() != "unsupported", license);
         _ = Identifier(p.Id);
         if (id != p.Id) await CacheAsync("project/" + p.Id, Encoding.UTF8.GetBytes(r.GetRawText()), ct);
         return p;
@@ -108,6 +132,8 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
             try
             {
                 var version = ParseVersion(r);
+                if (!version.GameVersions.Contains(minecraft, StringComparer.Ordinal) ||
+                    !version.Loaders.Contains(LoaderName(loader), StringComparer.Ordinal)) continue;
                 if (version.ProjectId != projectId) throw new InvalidDataException("Версія належить іншому проєкту.");
                 versions.Add(version);
                 await CacheAsync("version/" + version.Id, Encoding.UTF8.GetBytes(r.GetRawText()), ct);
@@ -131,14 +157,43 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
         if (doc.RootElement.ValueKind == JsonValueKind.Null) return null;
         return ParseVersion(doc.RootElement, hash);
     }
-    private CatalogModVersion ParseVersion(JsonElement r, string? matchingHash = null)
+    public async Task<IReadOnlyList<CatalogModVersion>> GetContentVersionsAsync(string id, string minecraft, ProfileContentKind kind, CancellationToken ct = default)
+    {
+        using var project = await GetAsync("project/" + Identifier(id), ct);
+        if (project.RootElement.ValueKind != JsonValueKind.Object || GetString(project.RootElement, "project_type") != ContentType(kind) ||
+            GetString(project.RootElement, "id") != id) throw new InvalidDataException("ContentCatalogMismatch");
+        using var versions = await GetAsync("project/" + Identifier(id) + "/version?game_versions=" +
+            Uri.EscapeDataString(JsonSerializer.Serialize(new[] { minecraft })), ct);
+        var result = new List<CatalogModVersion>();
+        foreach (var element in versions.RootElement.EnumerateArray().Take(5000))
+        {
+            try
+            {
+                var version = ParseVersion(element, extension: ".zip");
+                if (version.ProjectId == id && version.GameVersions.Contains(minecraft, StringComparer.Ordinal))
+                    result.Add(version);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or ArgumentException or KeyNotFoundException or InvalidOperationException) { }
+        }
+        return result.OrderBy(v => v.Channel != "release").ThenByDescending(v => v.Published).ToArray();
+    }
+
+    public async Task<string> DownloadContentAsync(CatalogModVersion version, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        var file = version.File;
+        var target = SafePath.Join(paths.Cache, $"modrinth/content/{file.Sha512}/{file.Name}");
+        await downloads.DownloadAsync(file.Url, target, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
+        return target;
+    }
+
+    private CatalogModVersion ParseVersion(JsonElement r, string? matchingHash = null, string extension = ".jar")
     {
         var id = r.GetProperty("id").GetString()!; var project = r.GetProperty("project_id").GetString()!;
         _ = Identifier(id); _ = Identifier(project);
         if (r.TryGetProperty("status", out var status) && status.GetString() is not ("listed" or "unlisted" or "archived"))
             throw new InvalidDataException("Версія не опублікована.");
         var files = r.GetProperty("files").EnumerateArray().ToArray();
-        var candidates = files.Where(f => f.GetProperty("filename").GetString()!.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) &&
+        var candidates = files.Where(f => f.GetProperty("filename").GetString()!.EndsWith(extension, StringComparison.OrdinalIgnoreCase) &&
             (!f.TryGetProperty("file_type", out var type) || type.ValueKind == JsonValueKind.Null || type.GetString() == "unknown")).ToArray();
         if (matchingHash is not null) candidates = candidates.Where(f => f.GetProperty("hashes").TryGetProperty("sha512", out var h) && string.Equals(h.GetString(), matchingHash, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (candidates.Length == 0) throw new InvalidDataException("Немає перевіреного JAR цієї версії.");

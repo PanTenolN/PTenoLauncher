@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.PackCompareDialog" Title="{DynamicResource Text.PackCompare}"
+        Width="960" Height="630" MinWidth="590" MinHeight="430" WindowStartupLocation="CenterOwner">
+  <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+    <StackPanel Spacing="8">
+      <TextBlock Text="{DynamicResource Text.PackCompareHint}" TextWrapping="Wrap"/>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+        <StackPanel Spacing="5">
+          <Button Content="{DynamicResource Text.PackCompareLeft}" Tag="left" Click="Choose"/>
+          <TextBlock Name="LeftSummary" TextWrapping="Wrap"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="5">
+          <Button Content="{DynamicResource Text.PackCompareRight}" Tag="right" Click="Choose"/>
+          <TextBlock Name="RightSummary" TextWrapping="Wrap"/>
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+    <TextBlock Grid.Row="1" Name="TargetSummary" TextWrapping="Wrap" FontWeight="SemiBold"/>
+    <ListBox Grid.Row="2" Name="Differences">
+      <ListBox.ItemTemplate><DataTemplate>
+        <Grid ColumnDefinitions="125,*,*" ColumnSpacing="10" Margin="0,4">
+          <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
+          <SelectableTextBlock Grid.Column="1" Text="{Binding Left}" TextWrapping="Wrap"/>
+          <SelectableTextBlock Grid.Column="2" Text="{Binding Right}" TextWrapping="Wrap"/>
+        </Grid>
+      </DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Name="CompareStatus" TextWrapping="Wrap"/>
+      <Button Grid.Column="1" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}"/>
+      <Button Grid.Column="2" Content="{DynamicResource Text.Close}" Click="CloseWindow" IsEnabled="{Binding IsIdle}" IsCancel="True"/>
+    </Grid>
+  </Grid>
+</Window>

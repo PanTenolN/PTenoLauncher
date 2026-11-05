@@ -107,7 +107,7 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
             foreach (var item in manifest.Files)
                 if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(SafePath.Join(stage, "game/" + item.RelativePath), item.Hash, item.Algorithm, item.Size, ct))
                     throw new InvalidDataException("Розпакований backup не пройшов перевірку.");
-            var destination = paths.Profile(profile.Id);
+            var destination = paths.ProfileFolderForCreation(profile);
             Directory.CreateDirectory(destination);
             if (Directory.Exists(Path.Combine(stage, "game"))) Directory.Move(Path.Combine(stage, "game"), paths.Game(profile.Id));
             await store.SaveProfileAsync(profile, ct);

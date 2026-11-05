@@ -1,1 +1,19 @@
-<Project><PropertyGroup><TargetFramework>net10.0</TargetFramework><RuntimeIdentifiers>win-x64</RuntimeIdentifiers><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><LangVersion>latest</LangVersion><Version>0.2.0</Version><Authors>PTenoLauncher contributors</Authors><Deterministic>true</Deterministic><RestorePackagesWithLockFile>true</RestorePackagesWithLockFile><NuGetAudit>true</NuGetAudit><NuGetAuditMode>all</NuGetAuditMode></PropertyGroup></Project>
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework><RuntimeIdentifiers>win-x64</RuntimeIdentifiers><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><LangVersion>latest</LangVersion><Version>0.2.1</Version><Authors>PTenoLauncher contributors</Authors><Deterministic>true</Deterministic><RestorePackagesWithLockFile>true</RestorePackagesWithLockFile><NuGetAudit>true</NuGetAudit><NuGetAuditMode>all</NuGetAuditMode>
+    <PTenoBuildSequence Condition="'$(PTenoBuildSequence)' == ''">0</PTenoBuildSequence><PTenoBuildId Condition="'$(PTenoBuildId)' == ''">local-unversioned</PTenoBuildId><PTenoBuildChannel Condition="'$(PTenoBuildChannel)' == ''">preview</PTenoBuildChannel>
+  </PropertyGroup>
+  <ItemGroup><AssemblyMetadata Include="PTenoBuildSequence" Value="$(PTenoBuildSequence)"/><AssemblyMetadata Include="PTenoBuildId" Value="$(PTenoBuildId)"/><AssemblyMetadata Include="PTenoBuildChannel" Value="$(PTenoBuildChannel)"/></ItemGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'UpdaterTest'">
+    <DefineConstants>$(DefineConstants);PTENO_UPDATE_TEST</DefineConstants>
+    <DefineConstants Condition="'$(PTenoTestFailStartup)' == 'true'">$(DefineConstants);PTENO_UPDATE_TEST_FAIL</DefineConstants>
+    <DefineConstants Condition="'$(PTenoTestWithholdHealth)' == 'true'">$(DefineConstants);PTENO_UPDATE_TEST_NOHEALTH</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'UpdaterTest' and '$(PTenoUpdaterTestKeyFile)' != ''">
+    <EmbeddedResource Include="$(PTenoUpdaterTestKeyFile)" LogicalName="PTenoLauncher.UpdaterTestPublicKey"/>
+  </ItemGroup>
+  <Target Name="GuardUpdaterTestTrust" BeforeTargets="CoreCompile">
+    <Error Condition="'$(Configuration)' != 'UpdaterTest' and ('$(PTenoUpdaterTestKeyFile)' != '' or '$(PTenoTestFailStartup)' == 'true' or '$(PTenoTestWithholdHealth)' == 'true')" Text="Test updater trust/failure hooks require the isolated UpdaterTest configuration."/>
+    <Error Condition="'$(Configuration)' == 'UpdaterTest' and !Exists('$(PTenoUpdaterTestKeyFile)')" Text="UpdaterTest requires an explicit test public key. Never package this configuration for production."/>
+  </Target>
+</Project>

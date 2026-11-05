@@ -43,8 +43,8 @@ public sealed class ForgeModMetadataTests
     [InlineData("1.5", "(,1.0],[1.5,)", ConstraintMatch.Match)]
     [InlineData("1.2", "(,1.0],[1.5,)", ConstraintMatch.Mismatch)]
     [InlineData("2.0", "1.0", ConstraintMatch.Match)]
-    [InlineData("1.0-rc1", "[1.0,)", ConstraintMatch.Unknown)]
-    [InlineData("1.0", "[1.0-beta,)", ConstraintMatch.Unknown)]
+    [InlineData("1.0-rc1", "[1.0,)", ConstraintMatch.Mismatch)]
+    [InlineData("1.0", "[1.0-beta,)", ConstraintMatch.Match)]
     [InlineData("1.0", "[2,1]", ConstraintMatch.Unknown)]
     [InlineData("1.0", "[1,1)", ConstraintMatch.Unknown)]
     [InlineData("1.0", "[1,2],[1.5,3]", ConstraintMatch.Unknown)]
@@ -170,12 +170,12 @@ public sealed class ForgeModMetadataTests
     {
         using var ws = new TestWorkspace(); await Assert.ThrowsAsync<InvalidDataException>(() => Item(ws, "invalid", Metadata("[[mods]]\n" + body)));
     }
-    [Fact] public async Task QualifiersAndJarJarNeverBecomeConfirmedReady()
+    [Fact] public async Task EmptyJarJarMetadataIsSupportedAlongsideKnownQualifierRanges()
     {
         using var ws = new TestWorkspace(); var p = await Profile(ws); var file = await Item(ws, "qualifier", Metadata(Mod("example"), Dependency("example", "minecraft", "[1.21.1-beta,)")), jarjar:true);
         await new LocalModManager(ws.Paths, ws.Store).InstallAsync(p, [file], true);
-        var report = await Check(ws, p); Assert.Contains(report.Issues, i => i.Code == "mods.constraint.unknown");
-        Assert.Contains(report.Issues, i => i.Code == "mods.metadata.unknown");
+        var report = await Check(ws, p); Assert.DoesNotContain(report.Issues, i => i.Code == "mods.constraint.unknown");
+        Assert.DoesNotContain(report.Issues, i => i.Code == "mods.metadata.unknown");
     }
     [Fact] public async Task TamperedForgeJarCannotKeepItsInstalledIntegrityStatus()
     {

@@ -48,7 +48,7 @@ public sealed class ProfileDeletionService(LauncherPaths paths, ILauncherStore s
             }
         }
         var roots = new List<string>();
-        var profileRelative = $"instances/{profileId:N}";
+        var profileRelative = paths.ProfileRelative(profileId);
         if (Directory.Exists(paths.Profile(profileId))) roots.Add(profileRelative);
         foreach (var artifact in artifacts.DistinctBy(a => a.RelativePath))
         {
@@ -80,11 +80,10 @@ public sealed class ProfileDeletionService(LauncherPaths paths, ILauncherStore s
             string.Join("\n", files.Select(f => $"{f.RelativePath}|{f.Size}|{f.LastWriteTicks}")))));
         return new(profileId, profile.Name, includeBackups, exports.ToArray(), roots, files, fingerprint);
     }
-    private static void ValidateArtifact(OwnedArtifact artifact, Guid id)
+    private void ValidateArtifact(OwnedArtifact artifact, Guid id)
     {
         if (artifact.Kind == "translation-resourcepack" && artifact.ProfileId == id &&
-            System.Text.RegularExpressions.Regex.IsMatch(artifact.RelativePath, @"\Ainstances/" + id.ToString("N") +
-                @"/game/resourcepacks/pteno-translations-(?:uk_ua|en_us|pl_pl|de_de|es_es|fr_fr|pt_br|ru_ru)\.zip\z")) return;
+            TranslationPackOwnership.IsOwned(paths, id, artifact.RelativePath)) return;
         if (artifact.ProfileId != id || artifact.Kind is not ("backup" or "export") ||
             !(artifact.Kind == "backup" && artifact.RelativePath.StartsWith("backups/", StringComparison.Ordinal) ||
               artifact.Kind == "export" && artifact.RelativePath.StartsWith("exports/", StringComparison.Ordinal)))
@@ -148,7 +147,7 @@ public sealed class ProfileDeletionService(LauncherPaths paths, ILauncherStore s
         {
             _ = SafePath.Join(paths.Root, move.Source); _ = SafePath.Join(paths.Root, move.Destination);
             if (!move.Destination.StartsWith($"trash/{journal.Operation:N}/item-", StringComparison.Ordinal) ||
-                !(move.Source == $"instances/{journal.ProfileId:N}" ||
+                !(move.Directory && LauncherPaths.IsProfileRelative(journal.ProfileId, move.Source) ||
                   !move.Directory && (move.Source.StartsWith("backups/", StringComparison.Ordinal) || move.Source.StartsWith("exports/", StringComparison.Ordinal))))
                 throw new InvalidDataException("Небезпечний журнал видалення.");
         }

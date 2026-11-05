@@ -96,8 +96,6 @@ public sealed partial class LocalModManager
             mods.Add(new(id, version, ForgeText(mod, "displayName", id), requirements, features));
         }
         if (deps is not null && deps.Keys.Any(key => !ids.Contains(key))) warnings.Add("TOML містить залежності для неоголошеного Mod ID.");
-        if (zip.GetEntry("META-INF/jarjar/metadata.json") is not null)
-            warnings.Add("Jar-in-Jar Forge/NeoForge: вибір вкладених компонентів ще не підтримується.");
         return new(language, languageRange, mods);
     }
     private async Task<string?> ReadJarImplementationVersionAsync(ZipArchive zip, CancellationToken ct)

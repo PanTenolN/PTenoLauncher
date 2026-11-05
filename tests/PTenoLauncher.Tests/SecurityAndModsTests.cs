@@ -12,11 +12,11 @@ namespace PTenoLauncher.Tests;
 
 public sealed class SecurityAndModsTests
 {
-    internal static void CreateJar(string path, string id = "example", string depends = "{}")
+    internal static void CreateJar(string path, string id = "example", string depends = "{}", string version = "1.0.0")
     {
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
         using var text = new StreamWriter(zip.CreateEntry("fabric.mod.json").Open());
-        text.Write($$"""{"schemaVersion":1,"id":"{{id}}","version":"1.0.0","name":"Example","depends":{{depends}}}""");
+        text.Write($$"""{"schemaVersion":1,"id":"{{id}}","version":"{{version}}","name":"Example","depends":{{depends}}}""");
     }
     [Fact] public void DpapiDoesNotWritePlaintextAndRejectsTampering()
     {

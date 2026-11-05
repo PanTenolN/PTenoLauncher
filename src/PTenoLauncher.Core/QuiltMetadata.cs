@@ -6,7 +6,7 @@ public sealed record QuiltDependency(string? Id, string VersionsJson, bool Optio
     QuiltDependency? Unless = null, IReadOnlyList<QuiltDependency>? Children = null, bool All = false,
     bool Supported = true);
 public sealed record QuiltModMetadata(string Group, IReadOnlyList<QuiltDependency> Dependencies,
-    IReadOnlyList<QuiltDependency> Conflicts);
+    IReadOnlyList<QuiltDependency> Conflicts, string LoadType = "if_required");
 
 /// <summary>Quilt schema-1 version expressions. Unsupported/ambiguous input stays Unknown.
 /// Based on Quilt Loader 0.30.1 V1ModMetadataReader, not Fabric's predicate grammar.</summary>
@@ -51,7 +51,8 @@ public static class QuiltVersionConstraints
         if (actual is null) return ConstraintMatch.Unknown;
         var match = Regex.Match(text, @"^(>=|<=|>|<|=|~|\^)?(.+)$", RegexOptions.None, TimeSpan.FromSeconds(1));
         var op = match.Groups[1].Value; var target = match.Groups[2].Value;
-        if (op == "=" && !target.Contains('*')) return FabricVersionConstraints.Match(actual, text);
+        if (op == "=" && !target.Contains('*')) return QuiltSemanticOrder.Compare(actual, target) is { } equal
+            ? equal == 0 ? ConstraintMatch.Match : ConstraintMatch.Mismatch : actual == target ? ConstraintMatch.Match : ConstraintMatch.Unknown;
         bool semantic = Regex.IsMatch(target, @"^\d+(?:\.\d+)*(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z.-]+)?$", RegexOptions.None, TimeSpan.FromSeconds(1));
         if (op == "" && target.EndsWith(".x", StringComparison.Ordinal))
         {
@@ -63,7 +64,7 @@ public static class QuiltVersionConstraints
         }
         if (!semantic)
             return op is "" or "=" && !text.Contains('*') && !text.Contains('[') && !text.Contains(']')
-                ? actual == target ? ConstraintMatch.Match : ConstraintMatch.Mismatch : ConstraintMatch.Unknown;
+                ? actual == target ? ConstraintMatch.Match : char.IsAsciiDigit(target[0]) ? ConstraintMatch.Unknown : ConstraintMatch.Mismatch : ConstraintMatch.Unknown;
         if (op is "" or "^" or "~")
         {
             var parts = target.Split('-', '+')[0].Split('.');
@@ -76,11 +77,12 @@ public static class QuiltVersionConstraints
             // Quilt's upper bound is a normal release, so its prereleases are below the ceiling.
             return Both(actual, ">=" + target, "<" + ceiling);
         }
-        return FabricVersionConstraints.Match(actual, text);
+        if (QuiltSemanticOrder.Compare(actual, target) is not { } comparison) return ConstraintMatch.Unknown;
+        return (op switch { ">=" => comparison >= 0, "<=" => comparison <= 0, ">" => comparison > 0, "<" => comparison < 0, _ => comparison == 0 }) ? ConstraintMatch.Match : ConstraintMatch.Mismatch;
     }
     private static ConstraintMatch Both(string actual, string lower, string upper)
     {
-        var a = FabricVersionConstraints.Match(actual, lower); var b = FabricVersionConstraints.Match(actual, upper);
+        var a = Single(actual, lower); var b = Single(actual, upper);
         return a == ConstraintMatch.Unknown || b == ConstraintMatch.Unknown ? ConstraintMatch.Unknown
             : a == ConstraintMatch.Match && b == ConstraintMatch.Match ? ConstraintMatch.Match : ConstraintMatch.Mismatch;
     }

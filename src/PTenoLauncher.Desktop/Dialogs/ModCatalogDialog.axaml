@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.ModCatalogDialog" Title="{DynamicResource Text.DownloadMods}" Width="980" Height="690" MinWidth="630" MinHeight="460" WindowStartupLocation="CenterOwner">
+  <Grid Margin="16" RowDefinitions="Auto,*,Auto" RowSpacing="10">
+    <StackPanel><TextBlock Text="{Binding ActiveName}" FontSize="19" FontWeight="SemiBold"/><TextBlock Text="{Binding WorkspaceVersion}" Classes="secondary"/></StackPanel>
+    <Panel Grid.Row="1">
+      <Panel Name="SearchStep">
+        <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="12" Margin="0,8,0,0">
+          <Border Classes="card" Padding="10" VerticalAlignment="Top"><TextBlock Text="Modrinth"/></Border>
+          <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+              <TextBox Name="CatalogQuery" Text="{Binding RemoteQuery}" MaxLength="200" PlaceholderText="{DynamicResource Text.ModrinthQuery}" KeyDown="SearchKeyDown" TextChanged="CatalogQueryChanged"/>
+              <Button Grid.Column="1" Name="CatalogSearch" Click="Search" Content="{DynamicResource Text.Search}" IsEnabled="{Binding CanUseOnlineCatalog}"/>
+            </Grid>
+            <ListBox Grid.Row="1" Name="CatalogResults" ItemsSource="{Binding RemoteSearchResults}" SelectedItem="{Binding SelectedRemoteProject}" DoubleTapped="AddDoubleTapped">
+              <ListBox.ItemTemplate><DataTemplate>
+                <Grid ColumnDefinitions="28,*" ColumnSpacing="8">
+                  <Border Width="28" Height="28" CornerRadius="4" Background="{DynamicResource SidebarBrush}">
+                    <Panel><PathIcon Data="M2,4 L8,1 L14,4 L14,12 L8,15 L2,12 Z M2,4 L8,7 L14,4 M8,7 L8,15" Width="15" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image Width="28" Height="28" AttachedToVisualTree="CatalogIconAttached" DataContextChanged="CatalogIconChanged"/></Panel>
+                  </Border>
+                  <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </Grid>
+              </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+          <ScrollViewer Grid.Column="2"><StackPanel Spacing="8">
+            <Border Width="36" Height="36" HorizontalAlignment="Left" CornerRadius="4" Background="{DynamicResource SidebarBrush}">
+              <Panel><PathIcon Data="M2,4 L8,1 L14,4 L14,12 L8,15 L2,12 Z M2,4 L8,7 L14,4 M8,7 L8,15" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image Width="32" Height="32" DataContext="{Binding SelectedRemoteProject}" AttachedToVisualTree="CatalogIconAttached" DataContextChanged="CatalogIconChanged"/></Panel>
+            </Border>
+            <TextBlock Text="{Binding SelectedRemoteProject.Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding SelectedRemoteProject.Description}" TextWrapping="Wrap"/>
+            <Button Name="CatalogProjectPage" Content="{DynamicResource Text.CatalogProjectPage}" Click="OpenProject" IsVisible="{Binding HasRemoteProject}" IsEnabled="{Binding CanUseOnlineCatalog}"/>
+            <Button Name="CatalogVersions" Content="{DynamicResource Text.TryAgain}" Click="Versions" IsVisible="False" IsEnabled="{Binding CanUseOnlineCatalog}"/>
+            <ComboBox ItemsSource="{Binding RemoteVersions}" SelectedItem="{Binding SelectedRemoteVersion}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
+            <TextBlock Text="{Binding CatalogVersionDetails}" TextWrapping="Wrap"/>
+            <Button Name="CatalogAdd" Content="{DynamicResource Text.CatalogAdd}" Click="Add" IsEnabled="{Binding CanAddCatalogVersion}" Classes="primary"/>
+          </StackPanel></ScrollViewer>
+        </Grid>
+      </Panel>
+      <Panel Name="CartStep" IsVisible="False">
+        <ScrollViewer>
+            <Border Classes="card"><StackPanel Spacing="12">
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource Text.Cart}" FontSize="17" FontWeight="SemiBold"/><Button Grid.Column="1" Name="ResolveModCartButton" Content="{DynamicResource Text.ResolveCart}" Click="ResolveModCart" IsEnabled="{Binding IsIdle}"/></Grid>
+              <TextBlock Text="{Binding CartTarget}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding CartNextStep}" TextWrapping="Wrap"/>
+              <TextBlock Name="CartConflict" IsVisible="{Binding HasCartConflict}" Text="{Binding CartConflict}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+              <ItemsControl ItemsSource="{Binding CatalogPicks}" IsEnabled="{Binding IsIdle}">
+                <ItemsControl.ItemTemplate><DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                    <StackPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding Number}"/><TextBlock Text="{Binding FileName}" TextWrapping="Wrap" Classes="secondary"/></StackPanel>
+                    <Button Grid.Column="1" Name="RemoveCatalogPick" Content="{DynamicResource Text.CartRemove}" Click="RemoveCatalog" VerticalAlignment="Center"/>
+                  </Grid>
+                </DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <ItemsControl ItemsSource="{Binding Cart}" IsEnabled="{Binding IsIdle}">
+                <ItemsControl.ItemTemplate><DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,6">
+                    <StackPanel><TextBlock Text="{Binding Inspection.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="{Binding Inspection.Version}"/><TextBlock Text="{Binding Inspection.FileName}" TextWrapping="Wrap" Classes="secondary"/></StackPanel>
+                    <Button Grid.Column="1" Content="{DynamicResource Text.CartRemove}" Click="RemoveLocal" VerticalAlignment="Center"/>
+                  </Grid>
+                </DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{DynamicResource Text.CartRequired}" FontWeight="SemiBold"/>
+              <ItemsControl ItemsSource="{Binding CartRequired}">
+                <ItemsControl.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold"/><TextBlock Text="{Binding Version.File.Name}" TextWrapping="Wrap"/><TextBlock Text="{Binding Reason}" TextWrapping="Wrap" Classes="secondary"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <Expander Name="CartReviewDetails" Classes="compact" Focusable="False" Header="{DynamicResource Text.CartTechnical}"><TextBlock Text="{Binding RemoteSummary}" TextWrapping="Wrap" FontSize="12"/></Expander>
+              <TextBlock IsVisible="{Binding ManualLocalOnly}" Text="{DynamicResource Text.ManualModWarning}" TextWrapping="Wrap"/>
+              <Button IsVisible="{Binding HasLocalMods}" Content="{DynamicResource Text.LocalManualOnly}" Click="ManualOnly" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+              <StackPanel IsVisible="{Binding HasOptionalSection}" IsEnabled="{Binding IsIdle}" Spacing="10">
+                <TextBlock Text="{DynamicResource Text.CartOptional}" FontWeight="SemiBold"/>
+                <ItemsControl ItemsSource="{Binding CartOptionalFiles}">
+                  <ItemsControl.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Version.File.Name}" TextWrapping="Wrap"/><TextBlock Text="{Binding Reason}" TextWrapping="Wrap" Classes="secondary"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <ScrollViewer MaxHeight="200" IsVisible="{Binding HasOptionalChoices}"><ItemsControl Name="OptionalDependencyList" ItemsSource="{Binding OptionalChoices}"><ItemsControl.ItemTemplate><DataTemplate>
+                  <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" Margin="0,0,0,8"><StackPanel Spacing="3"><TextBlock Text="{Binding Title}" TextWrapping="Wrap"/><TextBlock Text="{Binding Note}" TextWrapping="Wrap" Classes="secondary" FontSize="11"/></StackPanel></CheckBox>
+                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+                <Button Content="{DynamicResource Text.ClearOptional}" Click="ClearOptionalSelection" IsVisible="{Binding HasOptionalChoices}" Margin="0,0,0,4" HorizontalAlignment="Left"/>
+              </StackPanel>
+              <CheckBox Name="UnknownModAcceptance" IsVisible="{Binding NeedsUnknownAcceptance}" Content="{DynamicResource Text.AcceptUnknown}" IsChecked="{Binding UnknownSourceAccepted}"/>
+              <Button Content="{DynamicResource Text.ClearCart}" Click="ClearCart" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            </StackPanel></Border>
+        </ScrollViewer>
+      </Panel>
+    </Panel>
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+      <Panel>
+        <TextBlock Text="{Binding Status}" IsVisible="{Binding !DownloadActive}" TextWrapping="Wrap" Classes="secondary"/>
+        <StackPanel IsVisible="{Binding DownloadActive}" Spacing="4">
+          <TextBlock Text="{Binding DownloadDetails}" TextWrapping="Wrap" Classes="secondary"/>
+          <ProgressBar Value="{Binding DownloadProgressValue}" IsIndeterminate="{Binding DownloadIndeterminate}" Height="4"/>
+        </StackPanel>
+      </Panel>
+      <Button Grid.Column="1" Name="CatalogBack" Content="{DynamicResource Text.CartBackToSearch}" Click="Back" IsVisible="False" IsEnabled="{Binding IsIdle}"/>
+      <Panel Grid.Column="2">
+        <Button Name="CatalogReview" Content="{Binding CatalogDoneLabel}" Click="Review" Classes="primary">
+          <Button.IsEnabled><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsIdle"/><Binding Path="HasCatalogSelection"/></MultiBinding></Button.IsEnabled>
+        </Button>
+        <Button Name="InstallCombinedCartButton" Content="{Binding CatalogInstallLabel}" Click="Install" IsVisible="False" IsEnabled="{Binding CanCommitCatalog}" Classes="primary"/>
+      </Panel>
+      <Button Grid.Column="3" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}"/>
+      <Button Grid.Column="4" Content="{DynamicResource Text.Cancel}" Click="CloseDialog" IsEnabled="{Binding IsIdle}" IsCancel="True"/>
+    </Grid>
+  </Grid>
+</Window>

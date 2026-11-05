@@ -1,9 +1,9 @@
 ﻿; Compile: ISCC.exe /DAppVersion=0.2.0 /DPublishDir=C:\absolute\publish PTenoLauncher.iss
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #error AppVersion is required
 #endif
 #ifndef PublishDir
-  #define PublishDir "..\artifacts\0.2.0\win-x64"
+  #error PublishDir is required
 #endif
 [Setup]
 AppId={{CF2E0B60-B0F5-4E74-9481-E0CE4ABBE030}
@@ -25,6 +25,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+UseSetupLdr=yes
 RestartApplications=no
 UninstallDisplayName=PTenoLauncher
 VersionInfoDescription=PTenoLauncher installer

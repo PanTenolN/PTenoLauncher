@@ -35,28 +35,32 @@ public sealed partial class LocalModManager
         if (output.Length != entry.Length) throw new InvalidDataException("Неповний вкладений файл.");
         return output.ToArray();
     }
-    private async Task ReadEmbeddedFabricAsync(ZipArchive zip, int depth, EmbeddedBudget budget,
-        List<ProvidedMod> provided, List<ModRequirement> requirements, List<string> metadataWarnings, CancellationToken ct)
+    private async Task<FabricModMetadata?> ReadEmbeddedFabricAsync(ZipArchive zip, int depth, EmbeddedBudget budget,
+        List<ProvidedMod> provided, List<string> metadataWarnings, CancellationToken ct)
     {
         if (depth > 4 || ++budget.Count > 65) throw new InvalidDataException("Перевищено ліміт вкладених JAR.");
         var meta = zip.GetEntry("fabric.mod.json");
-        if (meta is null) return; // No invented identifiers for unknown embedded metadata.
+        if (meta is null) return null;
         using var doc = JsonDocument.Parse(await ReadBoundedEntryAsync(meta, 1024 * 1024, ct));
         var root = doc.RootElement;
         var environment = ReadFabricEnvironment(root);
-        if (environment == "server") return;
+        if (environment == "server") return null;
         if (environment == "unknown") metadataWarnings.Add("Невідоме середовище вкладеного Fabric JAR.");
         var version = RequiredFabricText(root, "version");
         if (depth > 0 && (!root.TryGetProperty("schemaVersion", out var schema) || !schema.TryGetInt32(out var schemaNumber) || schemaNumber != 1))
             metadataWarnings.Add("Непідтримувана схема вкладеного Fabric JAR.");
-        if (depth > 0) provided.Add(new(RequiredFabricText(root, "id"), version));
+        var modId = RequiredFabricText(root, "id");
+        if (depth > 0) provided.Add(new(modId, version));
+        var supplied = new List<ProvidedMod>();
         if (root.TryGetProperty("provides", out var aliases))
             foreach (var alias in aliases.EnumerateArray())
             {
                 var id = alias.GetString();
                 if (string.IsNullOrWhiteSpace(id) || id.Length > 64) throw new InvalidDataException("Неприпустимий Fabric alias.");
-                provided.Add(new(id, version));
+                supplied.Add(new(id, version));
             }
+        provided.AddRange(supplied);
+        var requirements = new List<ModRequirement>();
         if (depth > 0)
             foreach (var kind in new[] { ("depends", "required"), ("recommends", "optional"), ("breaks", "incompatible") })
                 if (root.TryGetProperty(kind.Item1, out var group))
@@ -66,8 +70,8 @@ public sealed partial class LocalModManager
                             requirement.Value.ValueKind == JsonValueKind.Array ? requirement.Value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray() : [];
                         requirements.Add(new(requirement.Name, alternatives, kind.Item2));
                     }
-        if (!root.TryGetProperty("jars", out var jars)) return;
-        foreach (var child in jars.EnumerateArray())
+        var children = new List<FabricModMetadata>();
+        foreach (var child in root.TryGetProperty("jars", out var jars) ? jars.EnumerateArray().ToArray() : [])
         {
             ct.ThrowIfCancellationRequested();
             var name = child.GetProperty("file").GetString()!;
@@ -77,7 +81,26 @@ public sealed partial class LocalModManager
             var bytes = await ReadBoundedEntryAsync(entry, 32 * 1024 * 1024, ct);
             using var memory = new MemoryStream(bytes, false); using var nested = new ZipArchive(memory, ZipArchiveMode.Read);
             SafeArchive.Validate(nested, paths.Cache);
-            await ReadEmbeddedFabricAsync(nested, depth + 1, budget, provided, requirements, metadataWarnings, ct);
+            var metadata = await ReadEmbeddedFabricAsync(nested, depth + 1, budget, provided, metadataWarnings, ct);
+            if (metadata is not null) children.Add(metadata);
+        }
+        return new(modId, version, supplied, requirements, children);
+    }
+
+    // Fabric preselects top-level mods. An embedded candidate for an ID already supplied
+    // by a root contributes neither its version nor its own dependency constraints.
+    internal static IEnumerable<FabricModMetadata> EffectiveFabricChildren(ModInspection mod, HashSet<string> rootIds)
+    {
+        return Children(mod.FabricMetadata?.Children ?? []);
+
+        IEnumerable<FabricModMetadata> Children(IReadOnlyList<FabricModMetadata> children)
+        {
+            foreach (var child in children)
+            {
+                if (rootIds.Contains(child.Id) || child.Aliases.Any(alias => rootIds.Contains(alias.Id))) continue;
+                yield return child;
+                foreach (var descendant in Children(child.Children)) yield return descendant;
+            }
         }
     }
 }

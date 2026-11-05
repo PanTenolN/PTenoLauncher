@@ -1,0 +1,78 @@
+{
+  "date": "2026-11-02",
+  "state": "VERIFIED_BOUNDED_LOCAL_SUBSET",
+  "implemented": true,
+  "verified": true,
+  "refs": [
+    {
+      "key": "prism94-pack",
+      "url": "https://github.com/PrismLauncher/PrismLauncher/blob/9.4/launcher/minecraft/PackProfile.cpp",
+      "blobSha": "92242d452bac1c981b63b880288847bd75423674"
+    },
+    {
+      "key": "prism94-instance",
+      "url": "https://github.com/PrismLauncher/PrismLauncher/blob/9.4/launcher/minecraft/MinecraftInstance.cpp",
+      "blobSha": "9500ac002c3a3bc05ddef71af029d6d78dab1fcb"
+    },
+    {
+      "key": "prism94-ini",
+      "url": "https://github.com/PrismLauncher/PrismLauncher/blob/9.4/launcher/settings/INIFile.cpp",
+      "blobSha": "2c7620e65f58087e94936edb31c15cd2af627399"
+    },
+    {
+      "key": "multi-pack",
+      "url": "https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/PackProfile.cpp",
+      "blobSha": "8f746a32e284d8914e644a7ce1f6656913f113ab"
+    },
+    {
+      "key": "multi-instance",
+      "url": "https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/MinecraftInstance.cpp",
+      "blobSha": "4a0fdfbbcc28a62fcd20971c104927d9a4598b34"
+    },
+    {
+      "key": "multi-ini",
+      "url": "https://github.com/MultiMC/Launcher/blob/develop/launcher/settings/INIFile.cpp",
+      "blobSha": "6a3c801d6f914e98a0da4147fbd4fc66fb4e8edb"
+    },
+    {
+      "key": "prism-base",
+      "url": "https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/BaseInstance.cpp",
+      "blobSha": "9ce719bf4f022d7133deed169d9844c5e8a9972d"
+    },
+    {
+      "key": "prism-meta",
+      "url": "https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/meta/JsonFormat.cpp",
+      "blobSha": "e838a4ca0db8ac9335735e4390d64476cc777d8f"
+    }
+  ],
+  "notes": [
+    "Common OneSix/component-v1 only; exact uid/version requests, no cachedVersion substitution.",
+    "Directory or root/one-wrapper export ZIP; read-only source, explicit new-profile consent and transactional publication.",
+    "Explicit unknown/ancillary components, custom patches/hooks and ambiguous/external/linked game roots remain blocked.",
+    "Fixture/native synthetic import verified; real source profiles, installed components and gameplay not verified."
+  ],
+  "historicalCheckpoint": {
+    "date": "2026-10-30",
+    "state": "PAUSED_AT_USER_REQUEST",
+    "implemented": false,
+    "verified": false,
+    "notes": [
+      "Prism 9.4 tag confirmed; MultiMC develop commit a93647e8e9144bd656080919d1e21cfea4cf5d1d.",
+      "Both require mmc-pack.json formatVersion=1 and component uid/version; cachedVersion is not authoritative.",
+      "Both use InstanceType=OneSix. Same component format does not uniquely identify producer.",
+      "Prism 9.4/default source prefers minecraft when both game dirs exist, MultiMC prefers .minecraft; planned adapter blocks dual-root ambiguity.",
+      "Custom patches, pre/post/wrapper commands, external paths and unknown components must block or explicitly remain Unknown. Do not copy raw instance.cfg or account/session data.",
+      "No implementation of semantic metadata parser, transaction connection or UI yet."
+    ]
+  },
+  "currentCheck": {
+    "date": "2026-11-02",
+    "state": "VERIFIED_BOUNDED_LOCAL_SUBSET",
+    "primarySourcesReRead": [
+      "Prism 9.4 PackProfile.cpp/MinecraftInstance.cpp/INIFile.cpp/BaseInstance.cpp",
+      "MultiMC commit a93647e8e9144bd656080919d1e21cfea4cf5d1d PackProfile.cpp/MinecraftInstance.cpp"
+    ],
+    "prism94BaseInstanceSha": "69cf95e3c4a975f2e7d4d32480e32470c0d22ccf",
+    "historicalNotesBelowRetained": true
+  }
+}

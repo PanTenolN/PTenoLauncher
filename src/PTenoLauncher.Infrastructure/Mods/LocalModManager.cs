@@ -7,10 +7,10 @@ using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Infrastructure.Mods;
 
-public sealed record ModCartItem(string SourcePath, ModInspection Inspection);
+public sealed record ModCartItem(string SourcePath, ModInspection Inspection, string? Reason = null, string? CatalogTitle = null);
 public enum ModBlockerKind { Definite, MissingDependency, DependencyVersion, DependencyConflict }
-public sealed record ModBlocker(ModBlockerKind Kind, string Message);
-public sealed record ModCartReview(IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings, IReadOnlyList<ModBlocker> Details);
+public sealed record ModBlocker(ModBlockerKind Kind, string Message, ModIdentityConflict? Conflict = null);
+public sealed record ModCartReview(IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings, IReadOnlyList<ModBlocker> Details, NativeModSelection? NativeSelection = null);
 
 public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore store)
 {
@@ -25,6 +25,11 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         stream.Position = 0;
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, true);
         SafeArchive.Validate(zip, paths.Cache);
+        return await InspectArchiveAsync(zip, info.Name, hash, info.Length, new NativeBudget(), 0, null, ct);
+    }
+    private async Task<ModInspection> InspectArchiveAsync(ZipArchive zip, string fileName, string hash, long size,
+        NativeBudget budget, int depth, ModLoader? nativeContext, CancellationToken ct)
+    {
         string? id = null, name = null, version = null; ModLoader? loader = null; string environment = "unknown";
         var metadataWarnings = new List<string>();
         var dependencies = new List<string>(); var requirements = new List<ModRequirement>();
@@ -72,11 +77,19 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
             dependencies.AddRange(forgeInfo.Mods.SelectMany(m => m.Dependencies).Where(d => d.Kind == "required" && d.Side is "CLIENT" or "BOTH").Select(d => d.Id));
         }
         if (quiltInfo is not null) provided.AddRange(quiltInfo.Provided);
-        if (fabric is not null) await ReadEmbeddedFabricAsync(zip, 0, new EmbeddedBudget(), provided, requirements, metadataWarnings, ct);
+        FabricModMetadata? fabricMetadata = null;
+        if (fabric is not null && nativeContext is null) fabricMetadata = await ReadEmbeddedFabricAsync(zip, 0, new EmbeddedBudget(), provided, metadataWarnings, ct);
+        else if (fabric is not null) metadataWarnings.Add("Nested Fabric metadata requires a separate native-loader adapter; cross-loader assumptions are disabled.");
         dependencies.AddRange(requirements.Where(r => r.Kind == "required").Select(r => r.Id));
-        return new(info.Name, hash, info.Length, "Unknown Source", id, name, version, loader, dependencies.Distinct().ToArray(), environment, requirements, provided, metadataWarnings, quiltInfo?.Metadata, forgeInfo);
+        var context = loader is ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge ? loader : nativeContext;
+        var nested = context is null ? null : await ReadNativeNestedAsync(zip, context.Value, budget, depth, ct);
+        return new(fileName, hash, size, "Unknown Source", id, name, version, loader, dependencies.Distinct().ToArray(), environment, requirements, provided, metadataWarnings, quiltInfo?.Metadata, forgeInfo, nested, fabricMetadata);
     }
     public async Task<ModCartReview> ReviewAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, CancellationToken ct = default)
+        => await ReviewCoreAsync(profile, items, true, ct);
+    internal Task<ModCartReview> ReviewResultSetAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, CancellationToken ct)
+        => ReviewCoreAsync(profile, items, false, ct);
+    private async Task<ModCartReview> ReviewCoreAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, bool includeInstalled, CancellationToken ct)
     {
         var blockers = new List<ModBlocker>(); var warnings = new List<string>();
         void Block(ModBlockerKind kind, string message) => blockers.Add(new(kind, message));
@@ -90,9 +103,9 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         if (receipt is { Loader: ModLoader.Fabric, LoaderVersion: not null } && profile.Loader == ModLoader.Fabric) knownVersions["fabricloader"] = receipt.LoaderVersion;
         bool StableBuiltIn(string id) => id == "minecraft" ||
             (id is "java" or "fabricloader") && receipt is not null && receipt.Version == profile.MinecraftVersion && receipt.Loader == profile.Loader;
-        void AddProvided(ModInspection mod)
+        void AddProvided(IEnumerable<ProvidedMod> mods)
         {
-            foreach (var supplied in mod.ProvidedMods ?? [])
+            foreach (var supplied in mods)
             {
                 knownIds.Add(supplied.Id);
                 if (knownVersions.TryGetValue(supplied.Id, out var prior) && prior != supplied.Version)
@@ -100,30 +113,59 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
                 else knownVersions[supplied.Id] = supplied.Version;
             }
         }
-        var allInspections = new List<ModInspection>();
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(paths.Game(profile.Id), "mods"), "*.jar"))
+        var installed = new List<ModCartItem>();
+        foreach (var file in includeInstalled ? Directory.EnumerateFiles(Path.Combine(paths.Game(profile.Id), "mods"), "*.jar") : [])
         {
-            var mod = await InspectAsync(file, ct); existingHashes.Add(mod.Sha256);
-            allInspections.Add(mod);
-            if (mod.Id is not null) { knownIds.Add(mod.Id); knownVersions[mod.Id] = mod.Version; }
-            AddProvided(mod);
+            var mod = await InspectAsync(file, ct);
+            existingHashes.Add(mod.Sha256);
+            installed.Add(new(file, mod, "Уже встановлено у профілі"));
         }
         foreach (var item in items)
-        {
-            allInspections.Add(item.Inspection);
             if (!existingHashes.Add(item.Inspection.Sha256)) Block(ModBlockerKind.Definite, $"Дублікат JAR: {item.Inspection.FileName}");
-            if (item.Inspection.Id is string id) { if (!knownIds.Add(id)) Block(ModBlockerKind.Definite, $"Дублікат Mod ID: {id}"); knownVersions[id] = item.Inspection.Version; }
-            AddProvided(item.Inspection);
+
+        var all = installed.Concat(items).ToArray();
+        var rootOwners = new Dictionary<string, ModCartItem>(StringComparer.Ordinal);
+        foreach (var item in all)
+        {
+            var mod = item.Inspection;
+            if (profile.Loader == ModLoader.Fabric && mod.Loader == ModLoader.Fabric && mod.Environment == "server") continue;
+            var ids = (mod.FabricMetadata?.Aliases.Select(p => p.Id) ?? []).Prepend(mod.Id).OfType<string>().Distinct();
+            foreach (var id in ids)
+            {
+                if (rootOwners.TryGetValue(id, out var other))
+                {
+                    var conflict = new ModIdentityConflict(id, other, item);
+                    blockers.Add(new(ModBlockerKind.Definite, conflict.Technical, conflict));
+                }
+                else if (knownIds.Contains(id)) Block(ModBlockerKind.Definite, $"Дублікат Mod ID: {id}");
+                else
+                {
+                    rootOwners.Add(id, item);
+                    knownIds.Add(id);
+                    knownVersions[id] = mod.Version;
+                }
+            }
+        }
+        var rootIds = knownIds.ToHashSet(StringComparer.Ordinal);
+        foreach (var item in all)
+        {
+            var mod = item.Inspection;
+            if (profile.Loader == ModLoader.Fabric && mod.Loader == ModLoader.Fabric && mod.Environment == "server") continue;
+            AddProvided(mod.FabricMetadata is not null
+                ? EffectiveFabricChildren(mod, rootIds).SelectMany(m => m.Aliases.Append(new(m.Id, m.Version)))
+                : mod.ProvidedMods ?? []);
         }
         foreach (var item in items)
         {
             var mod = item.Inspection;
             if (mod.Loader is not null && mod.Loader != profile.Loader) Block(ModBlockerKind.Definite, $"{mod.FileName}: потрібен {mod.Loader}.");
             foreach (var warning in mod.MetadataWarnings ?? []) warnings.Add(mod.FileName + ": " + warning);
-            foreach (var dependency in mod.RequiredDependencies.Where(d => mod.Loader is not (ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge) && !knownIds.Contains(d)))
+            var requirements = (mod.Requirements ?? []).Concat(EffectiveFabricChildren(mod, rootIds).SelectMany(m => m.Requirements)).ToArray();
+            var required = mod.RequiredDependencies.Concat(requirements.Where(r => r.Kind == "required").Select(r => r.Id)).Distinct();
+            foreach (var dependency in required.Where(d => mod.Loader is not (ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge) && !knownIds.Contains(d)))
                 Block(ModBlockerKind.MissingDependency, $"{mod.FileName}: відсутня обов'язкова залежність {dependency}.");
             if (mod.SourceStatus == "Unknown Source") warnings.Add($"{mod.FileName}: Unknown Source; антивірусна перевірка не виконана.");
-            foreach (var requirement in mod.Requirements ?? [])
+            foreach (var requirement in requirements)
             {
                 if (!knownIds.Contains(requirement.Id)) { if (requirement.Kind == "optional") warnings.Add($"{mod.FileName}: необов'язкова залежність {requirement.Id}"); continue; }
                 knownVersions.TryGetValue(requirement.Id, out var actual);
@@ -135,21 +177,10 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
             if (mod.QuiltMetadata is null && mod.ForgeMetadata is null && (mod.Requirements is null || mod.Requirements.Count == 0)) warnings.Add($"{mod.FileName}: повна сумісність версій не підтверджена.");
             if (mod.Id is null) warnings.Add($"{mod.FileName}: metadata не підтримується або не визначено.");
         }
-        if (profile.Loader == ModLoader.Quilt)
-            foreach (var issue in QuiltCompatibility.Check(profile, receipt, allInspections))
-            {
-                if (issue.Code.Contains("unknown", StringComparison.Ordinal)) warnings.Add(issue.Message);
-                else Block(issue.Code switch
-                {
-                    "mods.dependency.missing" => ModBlockerKind.MissingDependency,
-                    "mods.dependency.version" => ModBlockerKind.DependencyVersion,
-                    "mods.conflict" => ModBlockerKind.DependencyConflict,
-                    _ => ModBlockerKind.Definite
-                }, issue.Message);
-            }
-        if (profile.Loader is ModLoader.Forge or ModLoader.NeoForge)
+        NativeModSelection? native = null;
+        if (profile.Loader is ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge)
         {
-            var result = ForgeCompatibility.Check(profile, receipt, allInspections);
+            var result = native = await NativeNestedResolver.AnalyzeProfileAsync(paths, profile, receipt, all.Select(item => item.Inspection).ToArray(), ct);
             warnings.AddRange(result.Warnings);
             foreach (var issue in result.Issues)
                 if (issue.Code.Contains("unknown", StringComparison.Ordinal)) warnings.Add(issue.Message);
@@ -158,11 +189,14 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
                     "mods.dependency.missing" => ModBlockerKind.MissingDependency,
                     "mods.dependency.version" => ModBlockerKind.DependencyVersion,
                     "mods.conflict" => ModBlockerKind.DependencyConflict,
+                    "mods.nested.unsatisfied" => ModBlockerKind.DependencyConflict,
                     _ => ModBlockerKind.Definite
                 }, issue.Message);
+            if (result.Confirmed && result.Artifacts.Count > 0)
+                warnings.Add("Native nested selection (static metadata only): " + string.Join(", ", result.Artifacts.Select(a => a.Identity + " " + a.Version + (a.Library ? " [library]" : " [mod]"))));
         }
         var details = blockers.Distinct().ToArray();
-        return new(details.Select(b => b.Message).Distinct().ToArray(), warnings.Distinct().ToArray(), details);
+        return new(details.Select(b => b.Message).Distinct().ToArray(), warnings.Distinct().ToArray(), details, native);
     }
     public async Task InstallAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, bool warningAccepted, CancellationToken ct = default)
     {
@@ -170,15 +204,22 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         new ProfileUsage(paths).CheckWorldLocks(profile.Id);
         await InstallUnderLeaseAsync(profile, items, warningAccepted, ct);
     }
-    internal async Task InstallUnderLeaseAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, bool warningAccepted, CancellationToken ct = default)
+    internal async Task InstallUnderLeaseAsync(GameProfile profile, IReadOnlyList<ModCartItem> items, bool warningAccepted, CancellationToken ct = default, bool allowMissingDependencies = false)
     {
         if (items.Count == 0) throw new InvalidOperationException("Кошик порожній.");
         if (!warningAccepted) throw new InvalidOperationException("Потрібне свідоме підтвердження попередження Unknown Source.");
         await RecoverUnderLeaseAsync(profile, ct);
         await new ModInventoryStore(paths).ReadAsync(profile.Id, ct);
         var review = await ReviewAsync(profile, items, ct);
-        if (review.Blockers.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, review.Blockers));
+        var blockers = allowMissingDependencies
+            ? review.Details.Where(b => b.Kind != ModBlockerKind.MissingDependency).Select(b => b.Message).ToArray()
+            : review.Blockers.ToArray();
+        var conflicts = review.Details.Select(b => b.Conflict).OfType<ModIdentityConflict>().ToArray();
+        if (conflicts.Length > 0) throw new ModIdentityConflictException(conflicts);
+        if (blockers.Length > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, blockers));
         var staged = new List<(string Temp, string Target)>();
+        var game = paths.Game(profile.Id);
+        var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var transaction = Guid.NewGuid(); var journalEntries = new List<ModJournalEntry>();
         var journalPath = SafePath.Join(paths.Profile(profile.Id), $"transactions/mods-{transaction:N}.json");
         await AtomicFile.WriteJsonAsync(journalPath, new ModInstallJournal(transaction, profile.Id, "Prepared", journalEntries), ct);
@@ -203,21 +244,49 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
                     finally { if (File.Exists(part)) File.Delete(part); }
                 }
                 if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(cached, mod.Sha256, "SHA256", mod.Size, ct)) throw new InvalidDataException("Пошкоджений кеш JAR.");
-                var target = SafePath.Join(paths.Game(profile.Id), $"mods/{mod.Sha256[..12]}-{mod.FileName}");
-                if (File.Exists(target)) throw new IOException("Файл мода вже існує.");
+                var target = SafePath.Join(game, ChooseInstallPath(game, mod.FileName, mod.Sha256, reservedNames));
                 var temp = target + ".pending-" + transaction.ToString("N");
-                journalEntries.Add(new(Path.GetRelativePath(paths.Game(profile.Id), temp).Replace('\\', '/'), Path.GetRelativePath(paths.Game(profile.Id), target).Replace('\\', '/'), mod.Sha256, mod.Size));
+                var origin = item.Inspection.SourceStatus switch
+                {
+                    "Modrinth" => "modrinth",
+                    "Local file / Modrinth SHA512" => "local-modrinth",
+                    _ => "local"
+                };
+                journalEntries.Add(new(Path.GetRelativePath(game, temp).Replace('\\', '/'), Path.GetRelativePath(game, target).Replace('\\', '/'),
+                    mod.Sha256, mod.Size, origin));
                 await AtomicFile.WriteJsonAsync(journalPath, new ModInstallJournal(transaction, profile.Id, "Prepared", journalEntries), ct);
                 File.Copy(cached, temp, false); staged.Add((temp, target));
             }
             ct.ThrowIfCancellationRequested();
             foreach (var (temp, target) in staged) File.Move(temp, target, false);
             await AtomicFile.WriteJsonAsync(journalPath, new ModInstallJournal(transaction, profile.Id, "Committed", journalEntries), CancellationToken.None);
-            await new ModInventoryStore(paths).RecordCommittedAsync(profile.Id, journalEntries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size)).ToArray(), CancellationToken.None);
+            await new ModInventoryStore(paths).RecordCommittedAsync(profile.Id, journalEntries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size, e.Origin)).ToArray(), CancellationToken.None);
             await store.AddHistoryAsync(profile.Id, "mods.installed", string.Join(", ", items.Select(i => i.Inspection.FileName)), CancellationToken.None);
             File.Delete(journalPath);
         }
         catch { if (File.Exists(journalPath)) await RecoverJournalAsync(profile, journalPath, CancellationToken.None); throw; }
         finally { foreach (var (temp, _) in staged) if (File.Exists(temp)) File.Delete(temp); }
+    }
+
+    internal static string ChooseInstallPath(string game, string fileName, string hash, HashSet<string> reserved)
+    {
+        if (fileName != Path.GetFileName(fileName) || !fileName.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Invalid JAR filename.");
+        _ = SafePath.Join(game, "mods/" + fileName);
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        if (stem.Length > 180)
+        {
+            var length = char.IsHighSurrogate(stem[179]) ? 179 : 180;
+            stem = stem[..length].TrimEnd(' ', '.');
+        }
+        var extension = Path.GetExtension(fileName);
+        for (var index = 0; index < 2048; index++)
+        {
+            var suffix = index == 0 ? "" : index == 1 ? "-" + hash[..8] : $"-{hash[..8]}-{index}";
+            var relative = "mods/" + stem + suffix + extension;
+            var target = SafePath.Join(game, relative);
+            if (!File.Exists(target) && !Directory.Exists(target) && reserved.Add(relative)) return relative;
+        }
+        throw new IOException("No free name for the JAR.");
     }
 }

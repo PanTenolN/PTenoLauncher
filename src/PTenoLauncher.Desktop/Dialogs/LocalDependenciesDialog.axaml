@@ -1,0 +1,9 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.LocalDependenciesDialog" Title="{DynamicResource Text.LocalDependencyQuestion}" Width="540" SizeToContent="Height" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="22" Spacing="14">
+    <TextBlock Text="{DynamicResource Text.LocalDependencyQuestion}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock Text="{DynamicResource Text.ManualModWarning}" TextWrapping="Wrap"/>
+    <Button Name="FindDependencies" Content="{DynamicResource Text.LocalFindDependencies}" Click="Find" HorizontalAlignment="Stretch"/>
+    <Button Name="ManualOnly" Content="{DynamicResource Text.LocalManualOnly}" Click="Manual" HorizontalAlignment="Stretch"/>
+    <Button Content="{DynamicResource Text.Cancel}" Click="Cancel" IsCancel="True" HorizontalAlignment="Right"/>
+  </StackPanel>
+</Window>

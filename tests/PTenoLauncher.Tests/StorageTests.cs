@@ -7,18 +7,53 @@ namespace PTenoLauncher.Tests;
 
 public sealed class TestWorkspace : IDisposable
 {
-    public LauncherPaths Paths { get; } = new(Path.Combine(Path.GetTempPath(), "PTenoLauncher-tests", Guid.NewGuid().ToString("N")));
+    private readonly PTenoLauncher.Testing.OwnedTestRoot owned = new("fixture");
+    public LauncherPaths Paths { get; }
     public SqliteLauncherStore Store { get; }
-    public TestWorkspace() { Paths.Initialize(); Store = new(Paths); }
+    public TestWorkspace() { Paths = new(owned.Root); Paths.Initialize(); Store = new(Paths); }
     public GameProfile Profile(ModLoader loader = ModLoader.Vanilla) => new(Guid.NewGuid(), "Мій профіль", "1.21.1", loader, 4096, null, DateTimeOffset.UtcNow);
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
-        if (Directory.Exists(Paths.Root)) Directory.Delete(Paths.Root, true);
+        owned.Dispose();
     }
 }
 public sealed class StorageTests
 {
+    [Fact]
+    public async Task ReadableProfileFolderIsStableAndLegacyMoveCanBeReversed()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var modern = ws.Profile() with { Name = "Clear Sky" };
+        await ws.Store.SaveProfileAsync(modern);
+        var named = ws.Paths.Profile(modern.Id);
+        Assert.Equal($"clear-sky-{modern.Id:N}", Path.GetFileName(named));
+        await ws.Store.SaveProfileAsync(modern with { Name = "Renamed" });
+        Assert.Equal(named, new LauncherPaths(ws.Paths.Root).Profile(modern.Id));
+
+        var legacy = ws.Profile() with { Name = "Legacy Pack" };
+        var oldPath = SafePath.Join(ws.Paths.Root, $"instances/{legacy.Id:N}");
+        Directory.CreateDirectory(oldPath);
+        await ws.Store.SaveProfileAsync(legacy);
+        Assert.Equal(oldPath, ws.Paths.Profile(legacy.Id));
+        var usage = new ProfileUsage(ws.Paths);
+        var mover = new ProfileFolderMover(ws.Paths, ws.Store, usage);
+        var plan = await mover.PreviewAsync(legacy.Id);
+        var marker = SafePath.Join(ws.Paths.Game(legacy.Id), "saves/world.dat");
+        await File.WriteAllTextAsync(marker, "fixture world");
+        await Assert.ThrowsAsync<IOException>(() => mover.MoveAsync(plan));
+        Assert.True(File.Exists(marker));
+        plan = await mover.PreviewAsync(legacy.Id);
+        await mover.MoveAsync(plan);
+        Assert.False(Directory.Exists(oldPath));
+        Assert.Equal(plan.Target, ws.Paths.Profile(legacy.Id));
+        Assert.Equal("fixture world", await File.ReadAllTextAsync(SafePath.Join(ws.Paths.Game(legacy.Id), "saves/world.dat")));
+        await mover.MoveAsync(await mover.PreviewAsync(legacy.Id));
+        Assert.Equal(oldPath, ws.Paths.Profile(legacy.Id));
+        Assert.True(File.Exists(marker));
+    }
+
     [Fact] public async Task ProfilesAndSettingsSurviveRestartWithoutNetwork()
     {
         using var ws = new TestWorkspace(); await ws.Store.InitializeAsync();

@@ -77,6 +77,20 @@ public sealed class LocalDependencyTests
     private static async Task<GameProfile> Profile(TestWorkspace ws)
     { await ws.Store.InitializeAsync();var p=ws.Profile(ModLoader.Fabric);await ws.Store.SaveProfileAsync(p);return p; }
     private static string Mods(TestWorkspace ws,GameProfile p)=>Path.Combine(ws.Paths.Game(p.Id),"mods");
+    [Fact] public async Task ManualOnlyWarnsAboutMissingDependencyAndNeverContactsCatalog()
+    {
+        using var ws=new TestWorkspace();var p=await Profile(ws);var other=await Profile(ws);using var f=new Fixture(ws);
+        var input=await f.Input();
+        var plan=await f.Installer.PreviewLocalAsync(p,[input],manualOnly:true);
+        Assert.True(plan.CanInstall);Assert.True(plan.ManualOnly);Assert.Contains(plan.Warnings,w=>w.Contains("b"));
+        Assert.Empty(plan.Remote.Resolution.Entries);Assert.Empty(f.Routes);Assert.Equal(0,f.Handler.Requests);
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>f.Installer.InstallLocalAsync(p,plan,true,false));
+        await f.Installer.InstallLocalAsync(p,plan,true,true);
+        Assert.Single(Directory.GetFiles(Mods(ws,p),"*.jar"));Assert.Empty(Directory.GetFiles(Mods(ws,other),"*.jar"));
+        Assert.Equal(0,f.Handler.Requests);
+        var broken=Path.Combine(ws.Paths.Root,"broken.jar");await File.WriteAllTextAsync(broken,"not a zip");
+        await Assert.ThrowsAnyAsync<InvalidDataException>(()=>f.Local.InspectAsync(broken));
+    }
     [Fact] public async Task ExactLocalSecondaryJarResolvesTransitiveDependenciesWithoutRedownloadingRoot()
     {
         using var ws=new TestWorkspace();var p=await Profile(ws);using var f=new Fixture(ws);var input=await f.Input();

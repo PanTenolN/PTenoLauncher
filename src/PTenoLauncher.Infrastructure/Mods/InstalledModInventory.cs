@@ -2,7 +2,8 @@ using System.Text.RegularExpressions;
 using PTenoLauncher.Infrastructure.Storage;
 namespace PTenoLauncher.Infrastructure.Mods;
 
-public sealed record InstalledModFile(string RelativePath, string Sha256, long Size);
+public sealed record InstalledModFile(string RelativePath, string Sha256, long Size,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Origin = null);
 public sealed record InstalledModInventory(Guid ProfileId, IReadOnlyList<InstalledModFile> Files, int Schema = 1);
 
 /// <summary>A local integrity baseline, not an antivirus verdict or publisher signature.</summary>
@@ -26,7 +27,8 @@ public sealed class ModInventoryStore(LauncherPaths paths)
             if (file is null || file.RelativePath is null || !file.RelativePath.StartsWith("mods/", StringComparison.Ordinal) ||
                 file.RelativePath.Count(c => c == '/') != 1 || !file.RelativePath.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) ||
                 file.Sha256 is null || !Regex.IsMatch(file.Sha256, "^[a-fA-F0-9]{64}$") ||
-                file.Size is <= 0 or > 512L * 1024 * 1024 || !seen.Add(file.RelativePath))
+                file.Size is <= 0 or > 512L * 1024 * 1024 || file.Origin is not (null or "local" or "modrinth" or "local-modrinth") ||
+                !seen.Add(file.RelativePath))
                 throw new InvalidDataException("Небезпечний запис контрольних хешів модів.");
             _ = SafePath.Join(paths.Game(id), file.RelativePath);
         }
@@ -41,7 +43,7 @@ public sealed class ModInventoryStore(LauncherPaths paths)
             if (merged.TryGetValue(file.RelativePath, out var prior) &&
                 (!prior.Sha256.Equals(file.Sha256, StringComparison.OrdinalIgnoreCase) || prior.Size != file.Size))
                 throw new InvalidDataException("Контрольний хеш уже встановленого мода змінився. Потрібна ручна перевірка.");
-            merged[file.RelativePath] = file;
+            merged[file.RelativePath] = file.Origin is null && prior is not null ? prior : file;
         }
         var inventory = new InstalledModInventory(id, merged.Values.OrderBy(f => f.RelativePath, StringComparer.Ordinal).ToArray());
         Validate(id, inventory);

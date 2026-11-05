@@ -67,6 +67,7 @@ public sealed class FabricInstaller(LauncherPaths paths, VerifiedDownloader down
     public async Task<InstallationReceipt> InstallAsync(GameProfile profile, string? loaderVersion = null,
         IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
+        loaderVersion = await Modpacks.MrpackRequirements.RequestedAsync(paths, profile, loaderVersion, ct);
         ProfileRules.Validate(profile);
         if (profile.Loader != ModLoader.Fabric) throw new InvalidOperationException("Потрібен профіль Fabric.");
         using var lease = new ProfileUsage(paths).Acquire(profile.Id); new ProfileUsage(paths).CheckWorldLocks(profile.Id);
@@ -76,7 +77,7 @@ public sealed class FabricInstaller(LauncherPaths paths, VerifiedDownloader down
         loaderVersion ??= previous is { Loader: ModLoader.Fabric } ? previous.LoaderVersion : null;
         try
         {
-            var basis = await vanilla.InstallUnderLeaseAsync(profile with { Loader = ModLoader.Vanilla }, progress, ct);
+            var basis = await vanilla.InstallUnderLeaseAsync(profile with { Loader = ModLoader.Vanilla, PreferredLoaderVersion = null }, progress, ct);
             return await PrepareUnderLeaseAsync(profile, basis, loaderVersion, progress, ct);
         }
         catch
@@ -88,6 +89,7 @@ public sealed class FabricInstaller(LauncherPaths paths, VerifiedDownloader down
     public async Task<InstallationReceipt> PrepareAsync(GameProfile profile, InstallationReceipt verifiedVanilla,
         string? loaderVersion = null, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
+        loaderVersion = await Modpacks.MrpackRequirements.RequestedAsync(paths, profile, loaderVersion, ct);
         ProfileRules.Validate(profile);
         using var lease = new ProfileUsage(paths).Acquire(profile.Id); new ProfileUsage(paths).CheckWorldLocks(profile.Id);
         return await PrepareUnderLeaseAsync(profile, verifiedVanilla, loaderVersion, progress, ct);

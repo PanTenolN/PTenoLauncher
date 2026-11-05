@@ -3,7 +3,7 @@ using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Infrastructure.Mods;
-public sealed record ModJournalEntry(string Temporary, string Target, string Sha256, long Size);
+public sealed record ModJournalEntry(string Temporary, string Target, string Sha256, long Size, string? Origin = null);
 public sealed record ModInstallJournal(Guid Transaction, Guid ProfileId, string State, IReadOnlyList<ModJournalEntry> Entries);
 
 public sealed partial class LocalModManager
@@ -16,6 +16,7 @@ public sealed partial class LocalModManager
     }
     internal async Task RecoverUnderLeaseAsync(GameProfile profile, CancellationToken ct)
     {
+        if (File.Exists(ModUpdateManager.PendingPath(paths, profile.Id))) throw new ModUpdateException("UpdatesRecovery");
         var directory = SafePath.Join(paths.Profile(profile.Id), "transactions");
         if (!Directory.Exists(directory)) return;
         foreach (var journal in Directory.EnumerateFiles(directory, "mods-*.json"))
@@ -28,7 +29,7 @@ public sealed partial class LocalModManager
             Path.GetFileName(journalPath) != $"mods-{journal.Transaction:N}.json")
             throw new InvalidDataException("Непідтверджений журнал установлення модів.");
         if (journal.Entries is null || journal.Entries.Any(e => e is null)) throw new InvalidDataException("Пошкоджений журнал модів.");
-        new ModInventoryStore(paths).Validate(profile.Id, new(profile.Id, journal.Entries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size)).ToArray()));
+        new ModInventoryStore(paths).Validate(profile.Id, new(profile.Id, journal.Entries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size, e.Origin)).ToArray()));
         // Preflight every entry before removing anything. A changed target remains untouched.
         foreach (var item in journal.Entries)
         {
@@ -47,7 +48,7 @@ public sealed partial class LocalModManager
             else if (journal.State == "Committed") throw new InvalidDataException("Завершена транзакція модів має відсутній файл.");
         }
         if (journal.State == "Committed")
-            await new ModInventoryStore(paths).RecordCommittedAsync(profile.Id, journal.Entries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size)).ToArray(), ct);
+            await new ModInventoryStore(paths).RecordCommittedAsync(profile.Id, journal.Entries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size, e.Origin)).ToArray(), ct);
         foreach (var item in journal.Entries)
         {
             var target = SafePath.Join(paths.Game(profile.Id), item.Target);

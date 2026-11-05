@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.ProfileImportView">
+  <ScrollViewer><Border Classes="card" VerticalAlignment="Top"><StackPanel Spacing="12">
+            <TextBlock Text="{DynamicResource Text.PackContentTitle}" FontSize="20" FontWeight="SemiBold"/>
+            <TextBlock Text="{DynamicResource Text.PackHint}" TextWrapping="Wrap" Classes="secondary"/>
+            <Button Content="{DynamicResource Text.PackCompare}" Click="ComparePacks" IsVisible="{Binding IsModpacks}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <Button Name="ChooseMrpackButton" Content="{DynamicResource Text.PackChoose}" Click="ChooseMrpack" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <Button Name="ChooseZipPackButton" Content="{DynamicResource Text.ZipChoose}" Click="ChooseZipPack" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <WrapPanel>
+              <Button Name="ChooseInstanceDirectoryButton" Content="{DynamicResource Text.InstanceChooseDirectory}" Click="ChooseInstanceDirectory" IsEnabled="{Binding IsIdle}" Margin="0,0,10,6"/>
+              <Button Name="ChooseInstanceZipButton" Content="{DynamicResource Text.InstanceChooseZip}" Click="ChooseInstanceZip" IsEnabled="{Binding IsIdle}" Margin="0,0,0,6"/>
+            </WrapPanel>
+            <StackPanel IsVisible="{Binding IsInstancePack}" Spacing="6">
+              <TextBlock Name="InstancePolicy" IsVisible="{Binding !IsCurseForgeAppPack}" Text="{DynamicResource Text.InstancePolicy}" TextWrapping="Wrap" Classes="secondary"/>
+              <TextBlock IsVisible="{Binding IsCurseForgeAppPack}" Text="{DynamicResource Text.CurseForgeAppPolicy}" TextWrapping="Wrap" Classes="secondary"/>
+              <TextBlock Name="InstanceLayoutLabel" Text="{Binding InstanceLayout}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <TextBlock Text="{Binding PackArchive}" TextWrapping="Wrap" Classes="secondary"/>
+            <Button Name="ChooseMinecraftLauncherButton" Content="{DynamicResource Text.MinecraftImportChooseFile}" Click="ChooseMinecraftLauncher" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <StackPanel IsVisible="{Binding IsMinecraftPack}" IsEnabled="{Binding IsIdle}" Spacing="6">
+              <TextBlock Text="{DynamicResource Text.MinecraftImportPolicy}" TextWrapping="Wrap"/>
+              <TextBlock Text="{DynamicResource Text.MinecraftImportChoose}"/><ComboBox Name="MinecraftImportProfile" ItemsSource="{Binding MinecraftProfileChoices}" SelectedItem="{Binding SelectedMinecraftImportProfile, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+              <TextBlock Text="{Binding MinecraftImportRequiredContent}" TextWrapping="Wrap"/><Button Name="ChooseMinecraftContentButton" Content="{DynamicResource Text.MinecraftImportChooseContent}" Click="ChooseMinecraftImportContent" HorizontalAlignment="Left"/><TextBlock Text="{Binding MinecraftImportContent}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Button Name="ChooseModrinthAppButton" Content="{DynamicResource Text.ModrinthAppDatabase}" Click="ChooseModrinthApp" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <Button Name="ChooseCurseForgeAppButton" Content="{DynamicResource Text.CurseForgeAppDirectory}" Click="ChooseCurseForgeApp" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+            <StackPanel IsVisible="{Binding IsModrinthAppPack}" IsEnabled="{Binding IsIdle}" Spacing="6">
+              <TextBlock Text="{DynamicResource Text.ModrinthAppPolicy}" TextWrapping="Wrap"/>
+              <TextBlock Text="{DynamicResource Text.ModrinthAppChoose}" TextWrapping="Wrap"/>
+              <ComboBox Name="ModrinthAppProfile" ItemsSource="{Binding ModrinthAppChoices}" SelectedItem="{Binding SelectedModrinthAppProfile, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+              <Button Content="{DynamicResource Text.ModrinthAppProfilesFolder}" Click="ChooseModrinthProfilesDirectory" HorizontalAlignment="Left"/>
+              <TextBlock Text="{Binding ModrinthAppContent}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel IsEnabled="{Binding IsIdle}" Spacing="8">
+              <StackPanel IsVisible="{Binding IsZipPack}" Spacing="6">
+                <TextBlock Name="ZipPolicy" Text="{DynamicResource Text.ZipPolicy}" TextWrapping="Wrap" Classes="secondary"/>
+                <TextBlock Text="{DynamicResource Text.ZipMinecraft}"/><TextBox Name="ZipMinecraft" Text="{Binding ZipMinecraft, Mode=TwoWay}" MaxLength="100"/>
+                <TextBlock Text="{DynamicResource Text.ZipLoader}"/><ComboBox Name="ZipLoader" ItemsSource="{Binding ZipLoaders}" SelectedItem="{Binding ZipLoader, Mode=TwoWay}"/>
+                <TextBlock Text="{DynamicResource Text.ZipLoaderVersion}"/><TextBox Name="ZipLoaderVersion" Text="{Binding ZipLoaderVersion, Mode=TwoWay}" MaxLength="100"/>
+                <TextBlock Text="{DynamicResource Text.ZipRootLabel}"/><ComboBox Name="ZipRoot" ItemsSource="{Binding ZipRoots}" SelectedItem="{Binding ZipRoot, Mode=TwoWay}"/>
+                <TextBlock Text="{Binding ZipLayout}" TextWrapping="Wrap"/>
+              </StackPanel>
+              <TextBlock Text="{DynamicResource Text.PackName}"/><TextBox Name="MrpackProfileName" Text="{Binding PackName, Mode=TwoWay}" MaxLength="80"/>
+              <CheckBox Content="{DynamicResource Text.PackPins}" IsChecked="{Binding PackPins, Mode=TwoWay}"/>
+              <TextBlock Text="{DynamicResource Text.OptionalComponents}" FontWeight="SemiBold"/>
+              <ItemsControl Name="MrpackOptionalFiles" ItemsSource="{Binding PackOptionalFiles}"><ItemsControl.ItemTemplate><DataTemplate><CheckBox IsChecked="{Binding Selected, Mode=TwoWay}"><TextBlock Text="{Binding Path}" TextWrapping="Wrap"/></CheckBox></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+              <Button Name="PreviewMrpackButton" Content="{DynamicResource Text.PackPreview}" Click="PreviewMrpack" HorizontalAlignment="Left"/>
+            </StackPanel>
+            <TextBlock Name="MrpackSummary" Text="{Binding PackSummary}" TextWrapping="Wrap"/>
+            <ListBox Name="MrpackFileList" ItemsSource="{Binding PackFiles}" MaxHeight="280"><ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+            <ItemsControl Name="MrpackBlockers" ItemsSource="{Binding PackBlockers}"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,6"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+            <TextBlock Text="{Binding PackHint}" TextWrapping="Wrap" Classes="secondary"/>
+            <TextBlock Text="{Binding PackPending}" Classes="secondary"/>
+            <CheckBox Name="MrpackConsent" IsChecked="{Binding PackConsent, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"><TextBlock Text="{DynamicResource Text.PackConsent}" TextWrapping="Wrap"/></CheckBox>
+            <WrapPanel>
+              <Button Name="ImportMrpackButton" Content="{DynamicResource Text.InstallPackUi}" Click="ImportMrpack" IsEnabled="{Binding CanImportPack}" Classes="primary" Margin="0,0,10,6"/>
+              <Button Name="RecoverMrpackButton" Content="{DynamicResource Text.PackRecover}" Click="RecoverMrpacks" IsEnabled="{Binding IsIdle}" Margin="0,0,10,6"/>
+              <Button Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" Margin="0,0,0,6"/>
+            </WrapPanel>
+            <ProgressBar Name="MrpackProgress" Value="{Binding PackProgress}" Minimum="0" Maximum="100"/>
+          </StackPanel></Border></ScrollViewer>
+</UserControl>

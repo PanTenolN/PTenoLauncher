@@ -6,6 +6,8 @@ namespace PTenoLauncher.Infrastructure.Security;
 
 public sealed class SecretVault(LauncherPaths paths)
 {
+    // Presence only: initialization/UI must never decrypt a key merely to show a saved state.
+    public bool Contains(string name) => File.Exists(SafePath.Join(paths.Secrets, name + ".dpapi"));
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("PTenoLauncher/secrets/v1");
     public byte[]? Read(string name)
     {

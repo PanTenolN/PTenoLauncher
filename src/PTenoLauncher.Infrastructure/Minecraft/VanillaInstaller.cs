@@ -12,7 +12,7 @@ public sealed class VanillaInstaller(LauncherPaths paths, VersionManager version
         using var lease = new ProfileUsage(paths).Acquire(profile.Id); new ProfileUsage(paths).CheckWorldLocks(profile.Id);
         return await InstallUnderLeaseAsync(profile, progress, ct);
     }
-    internal async Task<InstallationReceipt> InstallUnderLeaseAsync(GameProfile profile, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
+    internal async Task<InstallationReceipt> InstallUnderLeaseAsync(GameProfile profile, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default, bool persist = true)
     {
         ProfileRules.Validate(profile);
         if (profile.Loader != ModLoader.Vanilla) throw new NotSupportedException("Встановлення цього Mod Loader ще не реалізовано.");
@@ -50,26 +50,11 @@ public sealed class VanillaInstaller(LauncherPaths paths, VersionManager version
         }
         classpath.Add(clientJar);
         var assetDescriptor = root.GetProperty("assetIndex");
-        var assetId = assetDescriptor.GetProperty("id").GetString()!;
+        var assetId = AssetIndexPlan.ValidateId(assetDescriptor.GetProperty("id").GetString()!);
+        if (assetDescriptor.GetProperty("size").GetInt64() > 16 * 1024 * 1024) throw new InvalidDataException("Asset index exceeds 16 MiB.");
         var assetIndexPath = await Fetch(assetDescriptor, $"assets/indexes/{assetId}.json");
-        using var assetIndex = JsonDocument.Parse(await File.ReadAllBytesAsync(SafePath.Join(paths.Cache, assetIndexPath), ct));
-        if (assetIndex.RootElement.TryGetProperty("virtual", out var virtualFlag) && virtualFlag.GetBoolean() ||
-            assetIndex.RootElement.TryGetProperty("map_to_resources", out var mapping) && mapping.GetBoolean())
-            throw new NotSupportedException("Legacy virtual assets ще не підтримуються.");
-        var assetFiles = new System.Collections.Concurrent.ConcurrentBag<InstalledFile>();
-        var assets = assetIndex.RootElement.GetProperty("objects").EnumerateObject().ToArray()
-            .GroupBy(a => a.Value.GetProperty("hash").GetString(), StringComparer.Ordinal).Select(g => g.First()).ToArray();
-        await Parallel.ForEachAsync(assets, new ParallelOptions { MaxDegreeOfParallelism = 6, CancellationToken = ct }, async (asset, token) =>
-        {
-            var hash = asset.Value.GetProperty("hash").GetString()!;
-            if (hash.Length != 40 || !hash.All(Uri.IsHexDigit)) throw new InvalidDataException("Некоректний хеш ресурсу.");
-            var size = asset.Value.GetProperty("size").GetInt64();
-            var relative = $"assets/objects/{hash[..2]}/{hash}";
-            await downloader.DownloadAsync(new($"https://resources.download.minecraft.net/{hash[..2]}/{hash}"),
-                SafePath.Join(paths.Cache, relative), hash, size, progress: progress, ct: token);
-            assetFiles.Add(new(relative, hash, "SHA1", size));
-        });
-        foreach (var file in assetFiles) files[file.RelativePath] = file;
+        var preparedAssets = await new AssetManager(paths, downloader).PrepareAsync(profile, assetId, files[assetIndexPath], progress, ct);
+        foreach (var file in preparedAssets.Objects) files[file.RelativePath] = file;
         var jvm = modern ? MinecraftRules.Arguments(arguments.GetProperty("jvm")).ToList() : new List<string> { "-Djava.library.path=$" + "{natives_directory}", "-cp", "$" + "{classpath}" };
         var gameArguments = modern ? MinecraftRules.Arguments(arguments.GetProperty("game")) : LegacyArguments.Split(root.GetProperty("minecraftArguments").GetString()!);
         if (root.TryGetProperty("logging", out var logging) && logging.TryGetProperty("client", out var loggingClient))
@@ -80,10 +65,15 @@ public sealed class VanillaInstaller(LauncherPaths paths, VersionManager version
         var javaMajor = root.TryGetProperty("javaVersion", out var java) ? java.GetProperty("majorVersion").GetInt32() : 8;
         var receipt = new InstallationReceipt(profile.MinecraftVersion, javaMajor, root.GetProperty("mainClass").GetString()!,
             DateTimeOffset.UtcNow, files.Values.ToArray(), classpath, natives,
-            jvm, gameArguments, assetId);
+            jvm, gameArguments, assetId, LegacyAssets: preparedAssets.Layout,
+            VersionType: root.TryGetProperty("type", out var type) ? type.GetString()! : entry.Type);
+        ReceiptValidator.Validate(paths, receipt);
         paths.CreateProfile(profile);
-        await AtomicFile.WriteJsonAsync(paths.Receipt(profile.Id), receipt, ct);
-        await store.AddHistoryAsync(profile.Id, "minecraft.installed", profile.MinecraftVersion, ct);
+        if (persist)
+        {
+            await AtomicFile.WriteJsonAsync(paths.Receipt(profile.Id), receipt, ct);
+            await store.AddHistoryAsync(profile.Id, "minecraft.installed", profile.MinecraftVersion, ct);
+        }
         return receipt;
     }
 }

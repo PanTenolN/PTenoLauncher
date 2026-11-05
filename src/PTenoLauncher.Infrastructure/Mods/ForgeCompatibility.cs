@@ -13,7 +13,12 @@ internal static class ForgeCompatibility
         var versions = new Dictionary<string, string?>(StringComparer.Ordinal) { ["minecraft"] = profile.MinecraftVersion, ["java"] = null };
         string builtin = profile.Loader == ModLoader.Forge ? "forge" : "neoforge"; versions[builtin] = null;
         bool receiptMatches = receipt is not null && receipt.Version == profile.MinecraftVersion && receipt.Loader == profile.Loader;
-        if (receiptMatches) { versions["java"] = receipt!.JavaMajor.ToString(); versions[builtin] = receipt.LoaderVersion; }
+        if (receiptMatches)
+        {
+            versions["java"] = receipt!.JavaMajor.ToString(); versions[builtin] = receipt.LoaderVersion;
+            if (profile.Loader == ModLoader.Forge && receipt.Forge is not null && receipt.LoaderVersion?.StartsWith(profile.MinecraftVersion + "-", StringComparison.Ordinal) == true)
+                versions[builtin] = receipt.LoaderVersion[(profile.MinecraftVersion.Length + 1)..];
+        }
         var roots = new HashSet<string>(versions.Keys, StringComparer.Ordinal);
         foreach (var file in active)
             foreach (var mod in file.ForgeMetadata!.Mods)
@@ -28,7 +33,13 @@ internal static class ForgeCompatibility
         {
             var metadata = file.ForgeMetadata!;
             string? languageVersion = null;
-            if (profile.Loader == ModLoader.Forge && metadata.LanguageLoader is "javafml" or "lowcodefml" && versions[builtin] is { } forgeVersion)
+            if (receiptMatches && receipt!.Forge?.FmlCoordinate is { } coordinate && metadata.LanguageLoader is "javafml" or "lowcodefml")
+            {
+                var declared = PTenoLauncher.Infrastructure.Minecraft.ForgeCoordinate.Parse(coordinate).Version;
+                languageVersion = profile.Loader == ModLoader.Forge && declared.StartsWith(profile.MinecraftVersion + "-", StringComparison.Ordinal)
+                    ? declared[(profile.MinecraftVersion.Length + 1)..].Split('.')[0] : profile.Loader == ModLoader.NeoForge ? declared : null;
+            }
+            else if (profile.Loader == ModLoader.Forge && metadata.LanguageLoader is "javafml" or "lowcodefml" && versions[builtin] is { } forgeVersion)
                 languageVersion = forgeVersion.Split('.')[0]; // Official Forge FML uses the Forge major, not its full version.
             if (languageVersion is null || metadata.LanguageLoader is not ("javafml" or "lowcodefml"))
                 issues.Add(new("mods.language.unknown", file.FileName + ": версію FML language loader неможливо підтвердити; NeoForge FML має незалежну версію."));

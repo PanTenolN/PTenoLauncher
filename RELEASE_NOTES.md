@@ -1,3 +1,7 @@
+# PTenoLauncher 0.2.1 Development Preview
+
+See docs/PREVIEW_RELEASE.md for the changes, supported archive formats and release checks.
+
 # 0.2.0 — Development Preview
 
 ## Verified managed-Java preview - 2026-10-29

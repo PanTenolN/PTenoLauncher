@@ -108,8 +108,8 @@ public sealed class OnlineAiTests
         await Assert.ThrowsAsync<InvalidDataException>(() => Client(http, policy).TranslateAsync("fixture-model", "uk_ua", new Dictionary<string, string> { ["a"] = "%s" }, true));
         using var failure = new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("private-provider-body") }));
         using var failedHttp = new HttpClient(failure);
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => Client(failedHttp, policy).AskAsync("fixture-model", "question", true));
-        Assert.Contains("429", error.Message); Assert.DoesNotContain("private-provider-body", error.Message); Assert.Equal(1, failure.Calls);
+        var error = await Assert.ThrowsAsync<AiServiceException>(() => Client(failedHttp, policy).AskAsync("fixture-model", "question", true));
+        Assert.Equal("AiUxLimit", error.Code); Assert.DoesNotContain("private-provider-body", error.Message); Assert.Equal(1, failure.Calls);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public sealed class OnlineAiTests
         var workspace = new TranslationWorkspace(ws.Paths, ws.Store, new(ws.Paths), policy, Client(http, policy));
         var source = Jar(ws, "many.jar", Enumerable.Range(0, 66).ToDictionary(i => "k" + i.ToString("D3"), i => "Item " + i));
         await workspace.ImportAsync(profile, [source], "uk_ua");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => workspace.TranslateAsync(profile, "uk_ua", "fixture-model", true));
+        Assert.Equal("AiUxProvider", (await Assert.ThrowsAsync<AiServiceException>(() => workspace.TranslateAsync(profile, "uk_ua", "fixture-model", true))).Code);
         Assert.Equal(32, (await workspace.ReadAsync(profile.Id, "uk_ua", "synthetic"))!.Values.Count);
         await workspace.TranslateAsync(profile, "uk_ua", "fixture-model", true);
         Assert.Equal(66, (await workspace.ReadAsync(profile.Id, "uk_ua", "synthetic"))!.Values.Count); Assert.Equal(4, count);

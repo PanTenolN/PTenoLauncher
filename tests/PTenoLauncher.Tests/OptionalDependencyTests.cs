@@ -4,6 +4,23 @@ using Xunit;
 namespace PTenoLauncher.Tests;
 public sealed class OptionalDependencyTests
 {
+    [Fact]
+    public async Task AutomaticReviewAddsCompatibleDependenciesOnceAndReportsConflicts()
+    {
+        var resolver = new RemoteDependencyResolver(new Catalog(
+            V("A", "A1", Opt("B"), Opt("Bad"), Opt("Missing")),
+            V("Other", "Other1", Opt("B")),
+            V("B", "B1"), V("Bad", "Bad1", new CatalogDependency("A", null, "incompatible"))));
+        var result = await resolver.ResolveWithOptionalAsync(P, [new("A", "A1"), new("Other", "Other1")], [], [], automatic: true);
+        Assert.True(result.CanInstall);
+        var addition = Assert.Single(result.Entries, entry => entry.Version.ProjectId == "B");
+        Assert.Contains("A", addition.Reason);
+        Assert.Contains("Other", addition.Reason);
+        Assert.DoesNotContain(result.Entries, entry => entry.Version.ProjectId == "Bad");
+        Assert.Contains(result.Warnings, warning => warning.Contains("Bad", StringComparison.Ordinal));
+        Assert.Contains(result.Warnings, warning => warning.Contains("Missing", StringComparison.Ordinal));
+    }
+
     private sealed class Catalog(params CatalogModVersion[] versions):IModCatalog
     {
         public List<string> Queries {get;}=[];

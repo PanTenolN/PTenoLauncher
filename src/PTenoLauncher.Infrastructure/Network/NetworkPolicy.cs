@@ -17,7 +17,7 @@ public sealed class NetworkPolicy
     public static HttpClient CreateHttpClient()
     {
         var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("PTenoLauncher/0.2.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("PTenoLauncher/" + Updates.LauncherBuild.Current.Version);
         return client;
     }
 }

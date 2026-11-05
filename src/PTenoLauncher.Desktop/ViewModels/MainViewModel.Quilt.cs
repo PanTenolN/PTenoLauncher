@@ -23,8 +23,10 @@ public sealed partial class MainViewModel
         catch(System.Text.Json.JsonException ex){services.Log.Error("quilt.receipt",ex);}
         if(SelectedProfile?.Id!=profile.Id)return;
         QuiltVersions.Clear();foreach(var version in versions)QuiltVersions.Add(version);
-        SelectedQuiltVersion=QuiltVersions.FirstOrDefault(v=>v.Version==(receipt?.Loader==ModLoader.Quilt?receipt.LoaderVersion:null))??QuiltVersions.FirstOrDefault(v=>!v.IsPrerelease);
+        var requested = await PTenoLauncher.Infrastructure.Modpacks.MrpackRequirements.RequestedAsync(services.Paths, profile, ct: ct);
+        SelectedQuiltVersion=requested is not null ? QuiltVersions.FirstOrDefault(v=>v.Version==requested) : QuiltVersions.FirstOrDefault(v=>v.Version==(receipt?.Loader==ModLoader.Quilt?receipt.LoaderVersion:null))??QuiltVersions.FirstOrDefault(v=>!v.IsPrerelease);
         QuiltStatus=TextCatalog.Get("Message065")+QuiltVersions.Count+(services.Quilt.UsedCachedMetadata?TextCatalog.Get("Message066"):".");
         Status=TextCatalog.Get("Message067");
+        if(requested is not null && SelectedQuiltVersion is null)Status=TextCatalog.Get("PackTarget")+" "+requested;
     });
 }

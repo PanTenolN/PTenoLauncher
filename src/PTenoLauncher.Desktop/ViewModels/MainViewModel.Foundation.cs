@@ -4,7 +4,7 @@ using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Desktop.ViewModels;
-public enum LauncherPage { Home, Profiles, Mods, Modpacks, Downloads, Servers, Settings }
+public enum LauncherPage { Home, Profiles, Mods, Modpacks, Downloads, Servers, Settings, ProfileWorkspace }
 public sealed partial class MainViewModel
 {
     internal LauncherServices Services => services;
@@ -14,24 +14,42 @@ public sealed partial class MainViewModel
         get => page;
         set
         {
+            if (value == LauncherPage.ProfileWorkspace && WorkspaceProfileId is null) return;
+            if (IsProfileWorkspace && value != LauncherPage.ProfileWorkspace)
+            {
+                if (!CanLeaveWorkspace) return;
+                WorkspaceProfileId = null;
+            }
             if (value == LauncherPage.Mods && !CanManageMods) value = LauncherPage.Home;
             if (!Set(ref page, value)) return;
+            RefreshWorkspaceView();
             foreach (var name in new[] { nameof(IsHome), nameof(IsProfiles), nameof(IsMods), nameof(IsModpacks), nameof(IsDownloads), nameof(IsServers), nameof(IsSettings), nameof(PageTitle) }) Changed(name);
         }
     }
     public bool IsHome => Page == LauncherPage.Home;
+    public string PreviewVersion => PTenoLauncher.Infrastructure.Updates.LauncherBuild.Current.Version + " · Development Preview";
     public bool IsProfiles => Page == LauncherPage.Profiles;
     public bool CanManageMods => SelectedProfile is { Loader: not ModLoader.Vanilla };
-    public bool IsMods => CanManageMods && Page == LauncherPage.Mods;
+    public bool IsMods => CanManageMods && (Page == LauncherPage.Mods || WorkspaceMods);
     public bool IsModpacks => Page == LauncherPage.Modpacks;
     public bool IsDownloads => Page == LauncherPage.Downloads;
     public bool IsServers => Page == LauncherPage.Servers;
     public bool IsSettings => Page == LauncherPage.Settings;
-    public string PageTitle => TextCatalog.Get(Page.ToString());
+    public string PageTitle => IsProfileWorkspace ? ActiveName : TextCatalog.Get(IsDownloads ? "DownloadHistory" : Page.ToString());
     public bool HasProfile => SelectedProfile is not null;
     public bool NoProfile => !HasProfile;
     public string ActiveName => SelectedProfile?.Name ?? "";
     public string ActiveVersion => SelectedProfile?.Summary ?? "";
+    public bool HomeHasInstallation => SelectedProfile is { } profile && File.Exists(services.Paths.Receipt(profile.Id));
+    public bool HomeNeedsRepair => HomeHasInstallation && readinessReport?.Issues.Any(issue =>
+        issue.Code is "file.invalid" or "manifest.corrupt" or "game.missing" or "version.mismatch" or "loader.mismatch") == true;
+    public bool HomeShowsPlay => HomeHasInstallation && !HomeNeedsRepair && !IsGameLaunchActive;
+    public bool HomeShowsInstall => !HomeHasInstallation && !IsGameLaunchActive;
+    public bool HomeShowsRepair => HomeNeedsRepair && !IsGameLaunchActive;
+    private void RefreshHomeAction()
+    {
+        foreach (var name in new[] { nameof(HomeShowsPlay), nameof(HomeShowsInstall), nameof(HomeShowsRepair) }) Changed(name);
+    }
     public string ActiveIcon => SelectedProfile is { Name.Length: > 0 } p ? System.Globalization.StringInfo.GetNextTextElement(p.Name).ToUpperInvariant() : "P";
     public string ActiveMods
     {
@@ -45,18 +63,44 @@ public sealed partial class MainViewModel
     private bool showArchived;
     public bool ShowArchived { get => showArchived; set { if (Set(ref showArchived, value)) ApplyProfileFilter(); } }
     private IReadOnlyList<GameProfile> allProfiles = [];
+    private bool libraryGrid, libraryByLoader;
+    private string? libraryQuery;
+    private ModLoader? libraryLoader;
+    public bool LibraryGrid { get => libraryGrid; set => Set(ref libraryGrid, value); }
+    public bool LibraryByLoader { get => libraryByLoader; set { if (Set(ref libraryByLoader, value)) Changed(nameof(LibraryProfiles)); } }
+    public string? LibraryQuery { get => libraryQuery; set { if (Set(ref libraryQuery, value)) Changed(nameof(LibraryProfiles)); } }
+    public ModLoader? LibraryLoader { get => libraryLoader; set { if (Set(ref libraryLoader, value)) Changed(nameof(LibraryProfiles)); } }
+    public ModLoader[] LibraryLoaders { get; } = Enum.GetValues<ModLoader>();
+    public IReadOnlyList<GameProfile> LibraryProfiles
+    {
+        get
+        {
+            var rows = allProfiles.Where(p => (ShowArchived || !p.Archived) &&
+                (LibraryLoader is null || p.Loader == LibraryLoader) &&
+                (p.Name.Contains(LibraryQuery ?? "", StringComparison.OrdinalIgnoreCase) ||
+                 p.MinecraftVersion.Contains(LibraryQuery ?? "", StringComparison.OrdinalIgnoreCase)));
+            return (LibraryByLoader ? rows.OrderBy(p => p.Loader).ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+                : rows.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)).ToArray();
+        }
+    }
+    public Task SaveLibraryLayoutAsync() => services.Store.SetSettingAsync("ui.library.grid", LibraryGrid.ToString());
     private void ApplyProfileFilter()
     {
         var id = SelectedProfile?.Id;
         Profiles.Clear(); foreach (var p in allProfiles.Where(p => ShowArchived || !p.Archived)) Profiles.Add(p);
         SelectedProfile = Profiles.FirstOrDefault(p => p.Id == id) ?? Profiles.FirstOrDefault(p => !p.Archived);
         Changed(nameof(ProfileCount));
+        Changed(nameof(LibraryProfiles));
     }
     private void SelectionChanged()
     {
-        Changed(nameof(CanManageMods)); Changed(nameof(IsMods)); Changed(nameof(IsFabricProfile)); Changed(nameof(IsQuiltProfile));
+        RefreshHomeAction();
+        Changed(nameof(CanManageMods)); Changed(nameof(IsMods)); Changed(nameof(IsGlobalMods)); Changed(nameof(CanUseOnlineCatalog)); Changed(nameof(IsFabricProfile)); Changed(nameof(IsQuiltProfile));
+        Changed(nameof(IsForgeProfile)); Changed(nameof(CanInstallGame)); Changed(nameof(ForgeHint));
         if (!CanManageMods && Page == LauncherPage.Mods) Page = LauncherPage.Home;
-        foreach (var name in new[] { nameof(HasProfile), nameof(NoProfile), nameof(ActiveName), nameof(ActiveVersion), nameof(ActiveIcon), nameof(ActiveMods) }) Changed(name);
+        RefreshWorkspaceMods();
+        NotifyProfileJava();
+        foreach (var name in new[] { nameof(HasProfile), nameof(NoProfile), nameof(ActiveName), nameof(ActiveVersion), nameof(ActiveIcon), nameof(ActiveMods), nameof(WorkspaceVersion), nameof(PageTitle) }) Changed(name);
     }
     private LauncherTheme selectedTheme;
     public LauncherTheme SelectedTheme { get => selectedTheme; set { if (Set(ref selectedTheme, value)) { Changed(nameof(IsCustomTheme)); try { ApplyTheme(); } catch (ArgumentException ex) { Status = ex.Message; } } } }
@@ -73,13 +117,12 @@ public sealed partial class MainViewModel
     private bool animations = true;
     public bool Animations { get => animations; set => Set(ref animations, value); }
     private UiLanguage selectedLanguage = TextCatalog.Languages[0];
-    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); foreach (var name in new[] { nameof(PageTitle), nameof(ModeText), nameof(ProfileCount), nameof(Status), nameof(CatalogStatus), nameof(Readiness), nameof(CartSummary), nameof(ActiveMods), nameof(FabricStatus), nameof(QuiltStatus), nameof(RemoteSummary) }) Changed(name); foreach (var choice in OptionalChoices) choice.RefreshLanguage(); if (NeedsSignIn) Account = TextCatalog.Get("Message005"); } } }
+    public UiLanguage SelectedLanguage { get => selectedLanguage; set { if (Set(ref selectedLanguage, value) && value is not null) { TextCatalog.Apply(value.Code); foreach (var name in new[] { nameof(PageTitle), nameof(ModeText), nameof(ProfileCount), nameof(Status), nameof(CatalogStatus), nameof(Readiness), nameof(CartSummary), nameof(ActiveMods), nameof(FabricStatus), nameof(QuiltStatus), nameof(ForgeStatus), nameof(ForgeHint), nameof(RemoteSummary) }) Changed(name); foreach (var choice in OptionalChoices) choice.RefreshLanguage(); RefreshModUpdateLanguage(); RefreshLauncherUpdateTexts(); RefreshPackText(); RefreshAiText(); if (NeedsSignIn) Account = TextCatalog.Get("Message005"); } } }
     public UiLanguage[] Languages => TextCatalog.Languages;
     private bool aiEnabled;
-    public bool AiEnabled { get => aiEnabled; set { Set(ref aiEnabled, value); services.Ai.SetEnabled(value); } }
+    public bool AiEnabled { get => aiEnabled; set { Set(ref aiEnabled, value); services.Ai.SetEnabled(value); if (!value) { AiConsent = false; AiConnectionConsent = false; InvalidateTranslationConsent(); } RefreshAiText(); } }
     public bool LastOperationSucceeded { get; private set; }
     public bool IsInitialized { get; private set; }
-    public System.Collections.ObjectModel.ObservableCollection<string> ConsoleLines { get; } = [];
 
     private CustomPalette lastValidCustom = new();
     private ThemePreferences CurrentTheme() => new(SelectedTheme, SelectedTheme == LauncherTheme.Custom ? new(CustomBackground, CustomSidebar, CustomSurface, CustomAccent, CustomText, CustomRadius, Animations) : lastValidCustom);
@@ -123,14 +166,58 @@ public sealed partial class MainViewModel
         await ReloadProfilesAsync(ct); Page = LauncherPage.Home;
         Status = result.CleanupPending ? TextCatalog.Get("Message037") : TextCatalog.Get("Message038");
     });
-    public Task PrepareJavaAsync() => RunAsync(async ct =>
+    private readonly Dictionary<Guid, (string Key, string Detail)> javaResults = [];
+    public bool JavaPreparing { get; private set; }
+    public bool CanRetryJava => SelectedProfile is { } profile && !JavaPreparing &&
+        (string.IsNullOrWhiteSpace(profile.JavaPath) || javaResults.TryGetValue(profile.Id, out var result) && result.Key != "ProfileJavaReady");
+    public string ProfileJavaStatus
     {
-        var p = RequireProfile();
-        var progress = new Progress<DownloadProgress>(d => Status = $"Java: {d.Received / 1048576.0:N1} / {d.Total / 1048576.0:N1} MB");
-        var runtime = await services.Runtimes.EnsureAsync(p, progress, ct);
-        await services.Store.SaveProfileAsync(p with { JavaPath = runtime.Path }, ct);
-        await ReloadProfilesAsync(ct); Status = $"Java {runtime.Major} x64: {runtime.Path}";
-    });
+        get
+        {
+            if (SelectedProfile is not { } profile) return "";
+            if (javaResults.TryGetValue(profile.Id, out var result))
+                return result.Detail.Length == 0 ? TextCatalog.Get(result.Key) : TextCatalog.Format(result.Key, result.Detail);
+            return TextCatalog.Get(string.IsNullOrWhiteSpace(profile.JavaPath) ? "ProfileJavaPending" : "ProfileJavaAssigned");
+        }
+    }
+    private void NotifyProfileJava()
+    {
+        Changed(nameof(JavaPreparing));
+        Changed(nameof(CanRetryJava));
+        Changed(nameof(ProfileJavaStatus));
+    }
+    public Task PrepareJavaAsync() => RunAsync(ct => PrepareProfileJavaAsync(RequireProfile(), ct));
+
+    private async Task PrepareProfileJavaAsync(GameProfile profile, CancellationToken ct)
+    {
+        JavaPreparing = true;
+        javaResults[profile.Id] = ("ProfileJavaPreparing", "");
+        NotifyProfileJava();
+        Status = ProfileJavaStatus;
+        try
+        {
+            var runtime = await TrackDownloadsAsync("Java", profile.Name, progress => services.Runtimes.EnsureAsync(profile, progress, ct), ct);
+            await services.Store.SaveProfileAsync(profile with { JavaPath = runtime.Path }, ct);
+            await ReloadProfilesAsync(CancellationToken.None);
+            javaResults[profile.Id] = ("ProfileJavaReady", runtime.Major.ToString());
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            javaResults[profile.Id] = ("ProfileJavaCancelled", "");
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or HttpRequestException or UnauthorizedAccessException or TimeoutException)
+        {
+            services.Log.Error("profile.java", error);
+            javaResults[profile.Id] = Offline ? ("ProfileJavaOffline", "") :
+                ("ProfileJavaFailed", PTenoLauncher.Infrastructure.Diagnostics.LauncherLog.Redact(error.Message));
+        }
+        finally
+        {
+            JavaPreparing = false;
+            NotifyProfileJava();
+            Status = ProfileJavaStatus;
+        }
+    }
 
     public System.Collections.ObjectModel.ObservableCollection<PTenoLauncher.Infrastructure.Authentication.AuthAccountSummary> Accounts { get; } = [];
     private PTenoLauncher.Infrastructure.Authentication.AuthAccountSummary? selectedAccount;

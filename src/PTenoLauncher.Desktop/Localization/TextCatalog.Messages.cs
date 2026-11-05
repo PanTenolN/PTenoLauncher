@@ -113,6 +113,17 @@ public static partial class TextCatalog
         Texts.Add("Readiness.java.invalid", ("Java не пройшла перевірку.", "Java verification failed."));
         Texts.Add("Readiness.account.missing", ("Спочатку увійдіть онлайн і підтвердьте ліцензію Minecraft Java Edition.", "Sign in online first and verify Minecraft Java Edition ownership."));
         RegisterAiTexts();
+        RegisterForgeTexts();
+        RegisterModUpdateTexts();
+        RegisterLauncherUpdaterTexts();
+        RegisterMrpackTexts();
+        RegisterPackExportTexts();
+        RegisterContentTexts();
+        RegisterZipTexts();
+        RegisterInstanceTexts();
+        RegisterTranslationToolsTexts();
+        RegisterMinecraftImportTexts();
+        RegisterAiUsabilityTexts();
         LoadAdditionalLanguages();
     }
     public static string Format(string key, params object?[] args) => string.Format(CultureInfo.GetCultureInfo(Language == "en" ? "en-IE" : Language == "uk" ? "uk-UA" : Language), Get(key), args);

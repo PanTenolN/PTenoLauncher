@@ -63,6 +63,7 @@ public sealed class QuiltInstaller(LauncherPaths paths,VerifiedDownloader downlo
     }
     public async Task<InstallationReceipt> InstallAsync(GameProfile profile,string? loaderVersion=null,IProgress<DownloadProgress>? progress=null,CancellationToken ct=default)
     {
+        loaderVersion = await Modpacks.MrpackRequirements.RequestedAsync(paths, profile, loaderVersion, ct);
         ProfileRules.Validate(profile);if(profile.Loader!=ModLoader.Quilt)throw new InvalidOperationException("Потрібен профіль Quilt.");
         using var lease=new ProfileUsage(paths).Acquire(profile.Id);new ProfileUsage(paths).CheckWorldLocks(profile.Id);
         InstallationReceipt? previous=null;
@@ -71,7 +72,7 @@ public sealed class QuiltInstaller(LauncherPaths paths,VerifiedDownloader downlo
         loaderVersion??=previous is {Loader:ModLoader.Quilt}?previous.LoaderVersion:null;
         try
         {
-            var basis=await vanilla.InstallUnderLeaseAsync(profile with{Loader=ModLoader.Vanilla},progress,ct);
+            var basis=await vanilla.InstallUnderLeaseAsync(profile with{Loader=ModLoader.Vanilla, PreferredLoaderVersion=null},progress,ct);
             return await PrepareUnderLeaseAsync(profile,basis,loaderVersion,progress,ct);
         }
         catch{if(previous is not null)await AtomicFile.WriteJsonAsync(paths.Receipt(profile.Id),previous,CancellationToken.None);throw;}

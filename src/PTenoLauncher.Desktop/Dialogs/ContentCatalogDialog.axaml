@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.ContentCatalogDialog" Width="750" Height="560" MinWidth="540" MinHeight="380" WindowStartupLocation="CenterOwner">
+  <Grid Margin="16" RowDefinitions="Auto,*,Auto" RowSpacing="8">
+    <StackPanel Spacing="6">
+      <TextBlock Name="ContentTarget" TextWrapping="Wrap"/>
+      <ComboBox Name="ContentSource" SelectedIndex="0" SelectionChanged="SelectSource" IsEnabled="{Binding IsIdle}">
+        <ComboBoxItem Content="Modrinth"/>
+        <ComboBoxItem Content="CurseForge"/>
+      </ComboBox>
+      <TextBlock Name="ContentSourceUnavailable" Text="{DynamicResource Text.ContentCurseForgeUnavailable}" IsVisible="False" TextWrapping="Wrap"/>
+      <Grid Name="ContentSearchBar" ColumnDefinitions="*,Auto" ColumnSpacing="8" IsEnabled="{Binding IsIdle}">
+        <TextBox Name="ContentQuery" KeyDown="SearchKey"/>
+        <Button Grid.Column="1" Name="ContentSearch" Content="{DynamicResource Text.Search}" Click="Search"/>
+      </Grid>
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12" IsEnabled="{Binding IsIdle}">
+      <ListBox Name="ContentResults" SelectionChanged="SelectResult">
+        <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <ScrollViewer Grid.Column="1"><StackPanel Spacing="9">
+        <TextBlock Name="ContentTitle" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Name="ContentDescription" TextWrapping="Wrap"/>
+        <ComboBox Name="ContentVersions" HorizontalAlignment="Stretch" SelectionChanged="SelectVersion"/>
+        <TextBlock Name="ContentFile" TextWrapping="Wrap"/>
+        <TextBlock Name="ContentRequirements" TextWrapping="Wrap"/>
+        <Button Name="ContentInstall" Content="{DynamicResource Text.ContentInstall}" Click="Install" IsEnabled="False" Classes="primary"/>
+      </StackPanel></ScrollViewer>
+    </Grid>
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Classes="secondary"/>
+      <Button Grid.Column="1" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}"/>
+      <Button Grid.Column="2" Content="{DynamicResource Text.Close}" Click="CloseWindow" IsEnabled="{Binding IsIdle}"/>
+    </Grid>
+  </Grid>
+</Window>

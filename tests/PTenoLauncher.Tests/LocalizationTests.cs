@@ -33,6 +33,7 @@ public sealed class LocalizationTests
             Assert.False(vm.IsBusy);
             await vm.SaveLanguageAsync();
             Assert.Equal("en", await services.Store.GetSettingAsync("ui.language"));
+            vm.ProfileName = "Synthetic language profile"; vm.VersionId = "1.21.1";
             vm.Memory = "invalid";
             await vm.SaveCommand.ExecuteAsync();
             Assert.Equal("Memory must be a whole number of MB.", vm.Status);

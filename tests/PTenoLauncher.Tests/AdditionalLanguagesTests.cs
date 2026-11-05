@@ -53,6 +53,9 @@ public sealed class AdditionalLanguagesTests
     {
         using var ws = new TestWorkspace();
         using var services = new LauncherServices(ws.Paths);
+        var profile = ws.Profile();
+        await services.Store.InitializeAsync();
+        await services.Store.SaveProfileAsync(profile);
         var vm = new MainViewModel(services);
         await vm.InitializeAsync();
         var window = new MainWindow { DataContext = vm }; window.Show();
@@ -66,7 +69,11 @@ public sealed class AdditionalLanguagesTests
             Assert.Equal(language, TextCatalog.Language);
             Assert.Equal(home, TextCatalog.Get("Home"));
             Assert.Equal(save, TextCatalog.Get("Save"));
-            vm.ConsoleLines.Add("Synthetic original log: Привіт / Hello / {token-redacted}");
+            await vm.RunProfileConsoleAsync(profile.Id, (output, _, _, _) =>
+            {
+                output.Report("Synthetic original log: Привіт / Hello / {token-redacted}");
+                return Task.FromResult(0);
+            }, CancellationToken.None);
             for (var attempt = 0; vm.IsBusy && attempt < 500; attempt++) await Task.Delay(10);
             Assert.False(vm.IsBusy);
             await vm.SaveLanguageAsync();

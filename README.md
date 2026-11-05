@@ -1,5 +1,7 @@
 # PTenoLauncher
 
+Local .mrpack import is available under **Modpacks**: preview, explicit selection/consent, verified cache/downloads, independent profile and recovery. Install Minecraft/Java/the exact loader separately; import is not verified gameplay. [Usage and limits](docs/MRPACK_IMPORT.md); [current proof and blockers](docs/MRPACK_IMPORT_CHECKPOINT.md).
+
 **Створено та розробляється за допомогою ШІ (OpenAI Codex).**
 **Created and developed with AI assistance (OpenAI Codex).** Requirements and development direction are set by the project owner.
 
@@ -51,3 +53,5 @@ Current module readiness: [PROJECT_PROGRESS_SUMMARY.md](PROJECT_PROGRESS_SUMMARY
 On the first normal startup, select one of eight languages in the welcome menu and confirm to save it locally. Existing supported preferences skip the menu; language can later be changed in Settings / Appearance. [First-run details](docs/FIRST_RUN_LANGUAGE.md) and [latest continuation](docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md).
 
 Managed Java integrity and runtime-matrix checks: [verification](docs/JAVA_RUNTIME_VERIFICATION.md) and [latest continuation](docs/JAVA_RUNTIME_CHECKPOINT.md).
+
+Local ZIP import (supported subset, usage and limits): [docs/ZIP_IMPORT.md](docs/ZIP_IMPORT.md). Current checkpoint: [docs/ZIP_IMPORT_CHECKPOINT.md](docs/ZIP_IMPORT_CHECKPOINT.md).

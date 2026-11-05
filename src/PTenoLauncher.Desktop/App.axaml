@@ -6,10 +6,118 @@
     <Style Selector="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/></Style>
     <Style Selector="TextBlock.secondary"><Setter Property="Foreground" Value="{DynamicResource SecondaryBrush}"/><Setter Property="FontSize" Value="12"/></Style>
     <Style Selector="TextBlock.label"><Setter Property="Foreground" Value="{DynamicResource SecondaryBrush}"/><Setter Property="FontSize" Value="12"/><Setter Property="Margin" Value="0,0,0,6"/></Style>
-    <Style Selector="Button"><Setter Property="CornerRadius" Value="{DynamicResource ControlRadius}"/><Setter Property="Padding" Value="14,9"/><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Transitions"><Transitions><BrushTransition Property="Background" Duration="{DynamicResource MotionDuration}"/></Transitions></Setter></Style>
-    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource AccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
-    <Style Selector="Button.nav"><Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="16,11"/></Style>
-    <Style Selector="Button.danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></Style>
+    <Style Selector=":is(Button):not(CheckBox)">
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Padding" Value="11,5"/>
+      <Setter Property="MinHeight" Value="30"/>
+      <Setter Property="Background" Value="{DynamicResource ActionBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ActionTextBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ActionBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource ActionPrimaryBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Button.nav"><Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="Padding" Value="12,7"/></Style>
+    <Style Selector="Button.danger"><Setter Property="Foreground" Value="{DynamicResource ActionDangerBrush}"/></Style>
+    <Style Selector=":is(Button):not(CheckBox):not(.compactToggle):pointerover:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ActionHoverBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ActionTextBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ActionBorderBrush}"/>
+    </Style>
+    <Style Selector=":is(Button):not(CheckBox):not(.compactToggle):pressed:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ActionPressedBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ActionTextBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ActionBorderBrush}"/>
+    </Style>
+    <Style Selector="Button.danger:pointerover:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Foreground" Value="{DynamicResource ActionDangerBrush}"/>
+    </Style>
+    <Style Selector=":is(Button):not(CheckBox):not(.compactToggle):focus-visible:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{DynamicResource ActionFocusBrush}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+    </Style>
+    <Style Selector=":is(Button):not(CheckBox):disabled"><Setter Property="Cursor" Value="Arrow"/></Style>
+    <Style Selector=":is(Button):not(CheckBox):not(.compactToggle):disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource ActionDisabledBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource ActionDisabledTextBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ActionDisabledBorderBrush}"/>
+    </Style>
+    <Style Selector="Expander.compact">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel Spacing="8">
+            <ToggleButton Name="CompactExpanderToggle" Classes="compactToggle" HorizontalAlignment="Left"
+                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <TextBlock Text="›" IsVisible="{Binding !$parent[Expander].IsExpanded}"/>
+                <TextBlock Text="⌄" IsVisible="{Binding $parent[Expander].IsExpanded}"/>
+                <TextBlock Grid.Column="1" Text="{Binding $parent[Expander].Header}" TextWrapping="Wrap"/>
+              </Grid>
+            </ToggleButton>
+            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                              IsVisible="{TemplateBinding IsExpanded}" HorizontalContentAlignment="Stretch"/>
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="ToggleButton.compactToggle">
+      <Setter Property="Padding" Value="8,4"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="FocusAdorner" Value="{x:Null}"/>
+      <Setter Property="BorderThickness" Value="2"/><Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="CompactToggleOutline" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="ToggleButton.compactToggle:pointerover /template/ Border#CompactToggleOutline">
+      <Setter Property="Background" Value="{DynamicResource HoverBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton.compactToggle:focus-visible /template/ Border#CompactToggleOutline">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+      <Setter Property="FocusAdorner" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="CheckboxHighlight" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+            <Grid ColumnDefinitions="19,*" ColumnSpacing="8">
+              <Border Name="CheckboxSquare" Width="18" Height="18" CornerRadius="4" BorderThickness="1"
+                      BorderBrush="{DynamicResource CheckboxOutlineBrush}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Panel>
+                  <Path Name="CheckboxTick" Data="M 3,8 L 7,12 L 13,5" Stroke="White" StrokeThickness="1.7" IsVisible="False"/>
+                  <Path Name="CheckboxDash" Data="M 4,8 L 12,8" Stroke="White" StrokeThickness="1.7" IsVisible="False"/>
+                </Panel>
+              </Border>
+              <ContentPresenter Name="PART_ContentPresenter" Grid.Column="1" VerticalAlignment="Center"
+                                Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}"/>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="CheckBox:pointerover:not(:disabled) /template/ Border#CheckboxHighlight, CheckBox:focus-visible:not(:disabled) /template/ Border#CheckboxHighlight">
+      <Setter Property="Background" Value="{DynamicResource CheckboxHighlightBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:checked /template/ Border#CheckboxSquare, CheckBox:indeterminate /template/ Border#CheckboxSquare">
+      <Setter Property="Background" Value="{DynamicResource CheckboxCheckedBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource CheckboxCheckedBrush}"/>
+    </Style>
+    <Style Selector="CheckBox:checked /template/ Path#CheckboxTick, CheckBox:indeterminate /template/ Path#CheckboxDash">
+      <Setter Property="IsVisible" Value="True"/>
+    </Style>
+    <Style Selector="CheckBox:disabled"><Setter Property="Opacity" Value="0.55"/><Setter Property="Cursor" Value="Arrow"/></Style>
     <Style Selector="TextBox"><Setter Property="CornerRadius" Value="{DynamicResource ControlRadius}"/><Setter Property="Padding" Value="11,8"/><Setter Property="Background" Value="{DynamicResource WindowBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
     <Style Selector="Border.card"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="CornerRadius" Value="{DynamicResource ControlRadius}"/><Setter Property="Padding" Value="20"/></Style>
   </Application.Styles>

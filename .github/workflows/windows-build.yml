@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main]
+    branches: [main, 'release/*']
     paths: ['src/**', 'tests/**', 'scripts/**', 'installer/**', '*.props', '*.json', '*.sln', 'NuGet.Config', '.github/workflows/windows-build.yml']
 permissions:
   contents: read
@@ -18,6 +18,8 @@ jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
+    outputs:
+      version: ${{ steps.release_version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,12 +27,26 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Build, test and package
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Read release version
+        id: release_version
         shell: pwsh
         run: |
+          $version = ([xml](Get-Content -LiteralPath Directory.Build.props -Raw)).Project.PropertyGroup.Version | Where-Object { $_ }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid project version.' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Build, test and package
+        shell: pwsh
+        env:
+          PTENO_VERSION: ${{ steps.release_version.outputs.version }}
+          PTENO_TEST_RUN_ID: ci-${{ github.run_id }}
+        run: |
           $env:PATH += ';C:\Program Files (x86)\Inno Setup 6'
-          ./scripts/build.ps1 -Publish -Installer
-          New-Item -ItemType Directory -Path artifacts/0.2.0/java-matrix -Force | Out-Null
+          ./scripts/build.ps1 -Publish -Installer -ReleaseSequence ([long]$env:GITHUB_RUN_ID) -BuildId $env:GITHUB_SHA
+          $matrixReport = "artifacts/$env:PTENO_VERSION/java-matrix"
+          New-Item -ItemType Directory -Path $matrixReport -Force | Out-Null
           try {
             dotnet tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll .local/ci-java-matrix --java-matrix
             if ($LASTEXITCODE -ne 0) { throw 'Managed Java runtime matrix failed' }
@@ -38,28 +54,27 @@ jobs:
             if (Test-Path -LiteralPath .local/ci-java-matrix) {
               Get-ChildItem -LiteralPath .local/ci-java-matrix -File |
                 Where-Object { $_.Name -like 'java-*.json' -or $_.Name -like 'java-*.log' } |
-                Copy-Item -Destination artifacts/0.2.0/java-matrix
+                Copy-Item -Destination $matrixReport
             }
           }
           python scripts/verify-requirements.py
-          python scripts/package-preview.py
           python scripts/verify-packages.py --smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: PTenoLauncher-windows-preview-${{ github.sha }}
           path: |
-            artifacts/*.exe
-            artifacts/*.zip
-            artifacts/SHA256SUMS.txt
-            artifacts/tests/*.trx
-            artifacts/0.2.0/final-artifact-verification.json
-            artifacts/0.2.0/java-matrix/*.json
-            artifacts/0.2.0/java-matrix/*.log
+            artifacts/${{ steps.release_version.outputs.version }}/*.exe
+            artifacts/${{ steps.release_version.outputs.version }}/*.zip
+            artifacts/${{ steps.release_version.outputs.version }}/SHA256SUMS.txt
+            artifacts/${{ steps.release_version.outputs.version }}/tests/*.trx
+            artifacts/${{ steps.release_version.outputs.version }}/final-artifact-verification.json
+            artifacts/${{ steps.release_version.outputs.version }}/java-matrix/*.json
+            artifacts/${{ steps.release_version.outputs.version }}/java-matrix/*.log
           if-no-files-found: warn
   publish:
     needs: windows
-    if: github.event_name == 'push' || inputs.publish_preview
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish_preview)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -77,20 +92,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PTENO_COMMIT: ${{ github.sha }}
+          PTENO_VERSION: ${{ needs.windows.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="v0.2.0-preview.${PTENO_COMMIT:0:12}"
+          tag="v${PTENO_VERSION}-preview.${PTENO_COMMIT:0:12}"
           # Never overwrite an existing preview or present it as a stable release.
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Preview already exists: $tag"
             exit 0
           fi
           gh release create "$tag" \
-            preview/PTenoLauncher-Setup-0.2.0-win-x64.exe \
-            preview/PTenoLauncher-Portable-0.2.0-win-x64.zip \
-            preview/PTenoLauncher-Source-0.2.0.zip \
+            "preview/PTenoLauncher-Setup-${PTENO_VERSION}-win-x64.exe" \
+            "preview/PTenoLauncher-Portable-${PTENO_VERSION}-win-x64.zip" \
+            "preview/PTenoLauncher-Source-${PTENO_VERSION}.zip" \
             preview/SHA256SUMS.txt \
             --target "$PTENO_COMMIT" --prerelease --latest=false \
-            --title "PTenoLauncher 0.2.0 Development Preview (${PTENO_COMMIT:0:12})" \
+            --title "PTenoLauncher ${PTENO_VERSION} Development Preview (${PTENO_COMMIT:0:12})" \
             --notes-file docs/PREVIEW_RELEASE.md

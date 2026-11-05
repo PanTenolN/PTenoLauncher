@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using PTenoLauncher.Core;
 using PTenoLauncher.Infrastructure.Authentication;
 using PTenoLauncher.Infrastructure.Diagnostics;
@@ -12,7 +11,8 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
     NetworkPolicy network, ILauncherStore store, LauncherLog log)
 {
     public event Action<Guid, bool>? RunningChanged;
-    public async Task<int> LaunchAsync(GameProfile profile, CancellationToken ct = default, IProgress<string>? console = null)
+    public async Task<int> LaunchAsync(GameProfile profile, CancellationToken ct = default, IProgress<string>? console = null,
+        Action? onStarted = null, Action<string>? onLogOpened = null)
     {
         using var profileLease = new ProfileUsage(paths).Acquire(profile.Id);
         new ProfileUsage(paths).CheckWorldLocks(profile.Id);
@@ -37,20 +37,19 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
             }
             var values = new Dictionary<string, string>
             {
-                ["auth_player_name"] = session.Account.Name, ["version_name"] = receipt.Version,
+                ["auth_player_name"] = session.Account.Name, ["version_name"] = receipt.Forge?.VersionId ?? receipt.Version,
                 ["game_directory"] = paths.Game(profile.Id), ["assets_root"] = SafePath.Join(paths.Cache, "assets"),
                 ["assets_index_name"] = receipt.AssetIndex, ["auth_uuid"] = session.Account.Uuid,
                 ["auth_access_token"] = network.Offline ? "0" : session.AccessToken,
-                ["user_type"] = "msa", ["version_type"] = "release", ["natives_directory"] = nativeDir,
-                ["launcher_name"] = "PTenoLauncher", ["launcher_version"] = "0.2.0",
+                ["user_type"] = "msa", ["version_type"] = receipt.VersionType, ["natives_directory"] = nativeDir,
+                ["launcher_name"] = "PTenoLauncher", ["launcher_version"] = Updates.LauncherBuild.Current.Version,
                 ["classpath"] = string.Join(Path.PathSeparator, receipt.Classpath.Select(f => SafePath.Join(paths.Cache, f))),
                 ["classpath_separator"] = Path.PathSeparator.ToString(), ["library_directory"] = paths.Cache,
                 ["user_properties"] = "{}", ["clientid"] = "", ["auth_xuid"] = "",
                 ["auth_session"] = network.Offline ? "0" : "token:" + session.AccessToken + ":" + session.Account.Uuid,
-                ["game_assets"] = SafePath.Join(paths.Cache, "assets")
+                ["game_assets"] = AssetManager.GameAssets(paths, profile.Id, receipt)
             };
-            string Expand(string argument) => Regex.Replace(argument, @"\$\{([^}]+)\}", m =>
-                values.TryGetValue(m.Groups[1].Value, out var value) ? value : throw new NotSupportedException("Непідтримуваний параметр запуску: " + m.Groups[1].Value));
+            string Expand(string argument) => LaunchArgumentExpansion.Expand(argument, values);
             var psi = new ProcessStartInfo(profile.JavaPath!) { WorkingDirectory = paths.Game(profile.Id), UseShellExecute = false, CreateNoWindow = true };
             psi.ArgumentList.Add("-Xms512M"); psi.ArgumentList.Add($"-Xmx{profile.MemoryMb}M");
             foreach (var arg in receipt.JvmArguments) psi.ArgumentList.Add(Expand(arg));
@@ -63,11 +62,13 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
             {
                 code = await LiveProcessRunner.RunAsync(psi, gameLog, async process =>
                 {
+                    onLogOpened?.Invoke(gameLog);
                     RunningChanged?.Invoke(profile.Id, true);
+                    onStarted?.Invoke();
                     if (!process.HasExited)
                         await AtomicFile.WriteJsonAsync(activeFile, new ActiveGameRecord(process.Id, process.StartTime.ToUniversalTime().Ticks, profile.JavaPath!));
                     await store.AddHistoryAsync(profile.Id, "minecraft.started", receipt.Version, CancellationToken.None);
-                }, console, [session.AccessToken], ct);
+                }, console, [session.AccessToken], ct, formatMinecraftLog: true);
             }
             finally
             {

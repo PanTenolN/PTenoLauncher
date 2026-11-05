@@ -8,6 +8,7 @@ using PTenoLauncher.Infrastructure.Security;
 using PTenoLauncher.Infrastructure.Storage;
 using PTenoLauncher.Infrastructure.AI;
 using System.Text;
+using PTenoLauncher.Infrastructure.Updates;
 
 namespace PTenoLauncher.Desktop;
 
@@ -26,22 +27,32 @@ public sealed class LauncherServices : IDisposable
     public VanillaInstaller Installer { get; }
     public QuiltInstaller Quilt { get; }
     public FabricInstaller Fabric { get; }
+    public ForgeCatalog ForgeVersions { get; }
+    public ForgeComponentPreparer ForgeComponents { get; }
+    public ForgeInstaller Forge { get; }
     public GameLauncher Launcher { get; }
     public ModrinthClient Modrinth { get; }
     public RemoteModInstaller RemoteMods { get; }
+    public ModUpdateManager ModUpdates { get; }
+    public PTenoLauncher.Infrastructure.Modpacks.MrpackImporter Modpacks { get; }
+    public PTenoLauncher.Infrastructure.Modpacks.PackExporter PackExporter { get; }
+    public ILauncherUpdateWorkflow LauncherUpdates { get; }
     public LocalModManager Mods { get; }
     public BackupManager Backups { get; }
     public PTenoLauncher.Infrastructure.Settings.PreferencesService Preferences { get; }
     public PTenoLauncher.Infrastructure.AI.AiPolicy Ai { get; } = new();
     public ProfileUsage Usage { get; }
+    public ProfileContent Content { get; }
     public ProfileDeletionService Deletion { get; }
+    public ProfileFolderMover ProfileFolders { get; }
     public OpenAiClient OpenAi { get; }
     public TranslationWorkspace Translations { get; }
     public SecretVault AiSecrets { get; }
     private readonly HttpClient aiHttp;
-    private readonly HttpClient http = NetworkPolicy.CreateHttpClient();
-    public LauncherServices(LauncherPaths paths)
+    private readonly HttpClient http;
+    public LauncherServices(LauncherPaths paths, HttpMessageHandler? aiTransport = null, Func<string?>? aiKeyReader = null, HttpMessageHandler? coreTransport = null)
     {
+        http = coreTransport is null ? NetworkPolicy.CreateHttpClient() : new(coreTransport) { Timeout = TimeSpan.FromMinutes(10) };
         Paths = paths; Paths.Initialize();
         Store = new SqliteLauncherStore(paths); Log = new(paths);
         var downloads = new VerifiedDownloader(http, Network);
@@ -53,12 +64,20 @@ public sealed class LauncherServices : IDisposable
         Installer = new(paths, Versions, downloads, Store);
         Fabric = new(paths, downloads, Network, Installer, Store);
         Quilt = new(paths, downloads, Network, Installer, Store);
+        ForgeVersions = new(paths, downloads, Network);
+        ForgeComponents = new(paths, ForgeVersions, downloads, Store);
+        Forge = new(paths, ForgeComponents, Installer, Runtimes, Java, Store);
         Launcher = new(paths, Readiness, Authentication, Network, Store, Log);
         Modrinth = new(paths, downloads, Network); RemoteMods = new(paths, Store, Modrinth, downloads, Mods); Backups = new(paths, Store);
-        Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage);
+        ModUpdates = new(paths, Store, Modrinth, downloads, Mods);
+        Modpacks = new(paths, (SqliteLauncherStore)Store, downloads, Network);
+        PackExporter = new(paths, Store, Modrinth);
+        LauncherUpdates = new LauncherUpdateWorkflow(paths, new(paths, downloads, Network, LauncherUpdateTrust.Production, LauncherBuild.Current), LauncherUpdateTrust.Production, AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage); Content = new(paths);
+        ProfileFolders = new(paths, Store, Usage);
         AiSecrets = new(paths);
-        aiHttp = new(new AiRequestGateHandler(Ai, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(2) };
-        OpenAi = new(aiHttp, Ai, Network, () => AiSecrets.Read("openai-api-key") is { } bytes ? Encoding.UTF8.GetString(bytes) : null);
+        aiHttp = new(new AiRequestGateHandler(Ai, aiTransport ?? new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(2) };
+        OpenAi = new(aiHttp, Ai, Network, aiKeyReader ?? (() => AiSecrets.Read("openai-api-key") is { } bytes ? Encoding.UTF8.GetString(bytes) : null));
         Translations = new(paths, Store, Usage, Ai, OpenAi);
     }
     public void Dispose() { Ai.SetEnabled(false); aiHttp.Dispose(); http.Dispose(); }

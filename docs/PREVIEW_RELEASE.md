@@ -1,14 +1,18 @@
-# PTenoLauncher 0.2.0 Development Preview
+# PTenoLauncher 0.2.1 Development Preview
 
-**Створено та розробляється за допомогою ШІ (OpenAI Codex).**
-**Created and developed with AI assistance (OpenAI Codex).**
+Created and developed with AI assistance (OpenAI Codex).
 
-This preview hardens managed Java identity/inventory, official Temurin package validation and version probing. Offline readiness no longer executes a runtime already found corrupt. Damaged installations are retained while a verified cached archive can repair to a new owned directory. Version probes reject non-x64 executables, bound output/time and do not inherit unrelated Java agents/options.
+- Profile resource packs and shaders can be added from ZIP files. The Modrinth catalog filters by Minecraft version and content type, then verifies the selected ZIP before adding it to the profile. Worlds can be copied or moved to the launcher trash, with an optional backup.
+- Creating a profile starts Java x64 preparation. The launcher uses verified existing or cached Java where available. The profile survives an interrupted or unavailable download and offers a retry.
+- The Minecraft console renders Log4j messages and exception traces, colors levels, filters warnings and errors, and supports copying the saved transcript. The saved transcript reports its 10 MiB limit. Its historical view is paginated.
+- Mod search supports debounced suggestions, exact-version cart selection and automatic compatible optional dependencies. New installations keep readable JAR names and record file hashes and origin.
+- New profile folders retain a stable ID. Existing GUID-only folders still open. The move action previews both paths and supports moving back to the legacy path. It blocks when there are path-bound translation data, Java or pending transactions.
+- Two .mrpack archives can be compared read-only for Minecraft and loader versions, delivery method, file versions and SHA-512 hashes.
 
-Retains the first-run eight-language chooser, profiles/themes/SQLite, Vanilla/Fabric/Quilt preparation, deterministic local/Modrinth dependencies, confirmed process stopping, backups/deletion and optional online AI. Authentication/license checks are unchanged; core features work without AI.
+The CurseForge catalog requires approved API access. Importing an existing CurseForge App profile remains a separate local action. Modrinth live testing depends on network availability. Comparison covers supported .mrpack client content. It does not synchronize the profiles. This preview is unsigned and is intended for manual download. A trusted automatic update feed is required for automatic delivery.
 
-Local Release build has zero errors/warnings and 386 automatic tests pass. Publication requires its own successful Windows build/full suite, live managed Java 8/17/21/25 install/offline/recovery matrix, requirement checks, Inno compilation, ZIP/source verification and extracted Portable startup. See docs/JAVA_RUNTIME_CHECKPOINT.md for the actual result and assets. The local live attempt was network-blocked and is not marked PASS.
+Release packages are Windows x64 Setup, Portable and Source. Publication requires the Windows build, full regression suite, managed Java matrix, package checks and fresh Portable startup to pass for the same commit.
 
-All 184 original / 189 current requirements and 44 module grades are retained. Sinytra/Kilt/cross-loader bridges are deferred. Actual licensed Minecraft gameplay/world saves, Microsoft approval/full authentication, live AI quality, translation-pack activation, native UI/DPI review and current installer lifecycle remain unverified. Binaries are unsigned. This is a development prerelease, not a stable release.
+### 0.2.1 local regression and packaging evidence
 
-Assets: Windows x64 self-contained Setup EXE, Portable ZIP, Source ZIP and SHA256SUMS. No Minecraft binaries/worlds/credentials/private caches are redistributed.
+Final local Windows regression on the release source: 990 passed, zero failed, and two junction scenarios reported as NotRunnable. Release compilation completed with zero warnings and errors. The local Setup compiled, and both ZIPs passed SHA-256 and CRC checks. A fresh Portable extraction initialized successfully in an isolated data root. Live Modrinth and an installer lifecycle test are separate from these results.

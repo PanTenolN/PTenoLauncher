@@ -1,14 +1,89 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="PTenoLauncher.Desktop.Dialogs.ProfileEditor" Title="{DynamicResource Text.ProfileWindowTitle}" Width="570" Height="650" CanResize="False" WindowStartupLocation="CenterOwner">
-  <Grid RowDefinitions="*,Auto" Margin="26">
-    <ScrollViewer><StackPanel Spacing="16">
-      <TextBlock Text="{DynamicResource Text.EditProfile}" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,8"/>
-      <StackPanel><TextBlock Text="{DynamicResource Text.Name}" Classes="label"/><TextBox Name="ProfileNameInput" Text="{Binding ProfileName}"/></StackPanel>
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><StackPanel><TextBlock Text="{DynamicResource Text.Version}" Classes="label"/><TextBox Text="{Binding VersionId}"/></StackPanel><Button Grid.Column="1" Content="{DynamicResource Text.RefreshCatalog}" Command="{Binding RefreshVersionsCommand}" VerticalAlignment="Bottom"/></Grid>
-      <WrapPanel><CheckBox Content="{DynamicResource Text.Snapshots}" IsChecked="{Binding ShowSnapshots}" IsCheckedChanged="FiltersChanged" Margin="0,0,18,0"/><CheckBox Content="{DynamicResource Text.HistoricalVersions}" IsChecked="{Binding ShowHistorical}" IsCheckedChanged="FiltersChanged"/></WrapPanel><TextBlock Text="{Binding CatalogStatus}" Classes="secondary" TextWrapping="Wrap"/><ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}" HorizontalAlignment="Stretch" MaxDropDownHeight="250"/>
-      <Grid ColumnDefinitions="*,*" ColumnSpacing="16"><StackPanel><TextBlock Text="{DynamicResource Text.Loader}" Classes="label"/><ComboBox ItemsSource="{Binding Loaders}" SelectedItem="{Binding Loader}" HorizontalAlignment="Stretch"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="{DynamicResource Text.Memory}" Classes="label"/><TextBox Text="{Binding Memory}"/></StackPanel></Grid>
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:PTenoLauncher.Desktop.Dialogs" x:Class="PTenoLauncher.Desktop.Dialogs.ProfileEditor" Title="{DynamicResource Text.ProfileWindowTitle}" Width="790" Height="740" MinWidth="460" MinHeight="430" WindowStartupLocation="CenterOwner">
+  <Window.Resources><local:LoaderLabelConverter x:Key="LoaderLabel"/></Window.Resources>
+  <Window.Styles>
+    <Style Selector="Border.requiredField"><Setter Property="BorderThickness" Value="2"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="CornerRadius" Value="6"/></Style>
+    <Style Selector="Border.requiredField.missing"><Setter Property="BorderBrush" Value="#E05C63"/></Style>
+  </Window.Styles>
+    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="16" RowSpacing="10" Margin="20">
+    <StackPanel Grid.ColumnSpan="2" Spacing="6">
+      <TextBlock Name="EditorTitle" Text="{DynamicResource Text.EditProfile}" FontSize="23" FontWeight="SemiBold"/>
+      <StackPanel Name="ManualName"><TextBlock Text="{DynamicResource Text.Name}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding MissingProfileName}"><TextBox Name="ProfileNameInput" Text="{Binding ProfileName}"/></Border></StackPanel>
+      <TextBlock Name="ImportedName" IsVisible="False" Text="{Binding PackName}" FontWeight="SemiBold"/>
+    </StackPanel>
+    <StackPanel Name="CreateModeMenu" Grid.Row="1" Spacing="8" Width="140" IsVisible="{Binding IsCreatingProfile}">
+      <Button Name="NewManualMode" Click="ChooseManualMode" Classes="primary" HorizontalAlignment="Stretch"><TextBlock Text="{DynamicResource Text.NewManualMode}" TextWrapping="Wrap"/></Button>
+      <Button Name="NewImportMode" Click="ChooseImportMode" HorizontalAlignment="Stretch"><TextBlock Text="{DynamicResource Text.NewImportMode}" TextWrapping="Wrap"/></Button>
+    </StackPanel>
+    <local:ProfileImportView Name="NewProfileImport" Grid.Row="1" Grid.Column="1" IsVisible="False"/>
+    <ScrollViewer Name="ManualEditor" Grid.Row="1" Grid.Column="1" AllowAutoHide="False"><StackPanel Spacing="16" Margin="0,0,18,0">
+
+
+      <StackPanel Spacing="6">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+          <TextBlock Text="{DynamicResource Text.Version}" Classes="label"/>
+          <TextBlock Grid.Column="1" Text="{Binding VersionId}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <TextBox Name="VersionSearchInput" Text="{Binding VersionSearch}" PlaceholderText="{DynamicResource Text.VersionSearch}" AutomationProperties.Name="{DynamicResource Text.VersionSearch}"/>
+          <Button Grid.Column="1" Content="{DynamicResource Text.RefreshCatalog}" Command="{Binding RefreshVersionsCommand}"/>
+        </Grid>
+        <WrapPanel>
+          <CheckBox Content="{DynamicResource Text.VersionReleases}" IsChecked="{Binding ShowReleases}" Click="FiltersChanged" Margin="0,0,14,0"/>
+          <CheckBox Content="{DynamicResource Text.Snapshots}" IsChecked="{Binding ShowSnapshots}" Click="FiltersChanged" Margin="0,0,14,0"/>
+          <CheckBox Content="{DynamicResource Text.HistoricalVersions}" IsChecked="{Binding ShowHistorical}" Click="FiltersChanged"/>
+        </WrapPanel>
+        <Border Classes="requiredField" Classes.missing="{Binding MissingProfileMinecraft}">
+          <Panel Height="190">
+            <ListBox Name="MinecraftVersionList" ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" AutomationProperties.Name="{DynamicResource Text.Version}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style>
+              </ListBox.Styles>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto,110" ColumnSpacing="12">
+                    <TextBlock Text="{Binding Id}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="1" Text="{Binding ReleasedAt, StringFormat='{}{0:d}'}" Classes="secondary"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Type}" Classes="secondary"/>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock IsVisible="{Binding !Versions.Count}" IsHitTestVisible="False" Text="{DynamicResource Text.VersionNoResults}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="14"/>
+          </Panel>
+        </Border>
+        <TextBlock Text="{Binding CatalogStatus}" Classes="secondary" TextWrapping="Wrap"/>
+      </StackPanel>
+      <Grid ColumnDefinitions="*,100" ColumnSpacing="12">
+        <StackPanel><TextBlock Text="{DynamicResource Text.Loader}" Classes="label"/><ComboBox ItemsSource="{Binding Loaders}" SelectedItem="{Binding Loader}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource LoaderLabel}}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
+        <StackPanel Grid.Column="1"><TextBlock Text="{DynamicResource Text.Memory}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding MissingProfileMemory}"><TextBox Text="{Binding Memory}"/></Border></StackPanel>
+      </Grid>
+      <StackPanel IsVisible="{Binding HasEditorLoader}" Spacing="6">
+        <TextBlock Text="{DynamicResource Text.LoaderVersion}" Classes="label"/>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+          <Border Classes="requiredField" Classes.missing="{Binding MissingProfileLoaderVersion}">
+            <ComboBox Name="ProfileLoaderVersionList" ItemsSource="{Binding EditorLoaderOptions}" SelectedItem="{Binding SelectedEditorLoaderOption, Mode=TwoWay}" PlaceholderText="{DynamicResource Text.LoaderVersionPrompt}" AutomationProperties.Name="{DynamicResource Text.LoaderVersion}" HorizontalAlignment="Stretch" MaxDropDownHeight="240" IsEnabled="{Binding IsIdle}"/>
+          </Border>
+          <Button Name="RefreshProfileLoaderVersions" Grid.Column="1" Content="{DynamicResource Text.RefreshCatalog}" Click="LoadLoaderVersions">
+            <Button.IsEnabled><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsIdle"/><Binding Path="HasVersionChoice"/></MultiBinding></Button.IsEnabled>
+          </Button>
+        </Grid>
+      </StackPanel>
+      <TextBlock IsVisible="{Binding HasEditorLoader}" Text="{Binding EditorCatalogState}" Classes="secondary" TextWrapping="Wrap"/>
       <StackPanel><TextBlock Text="{DynamicResource Text.JavaPath}" Classes="label"/><Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><TextBox Text="{Binding JavaPath}" PlaceholderText="{DynamicResource Text.AutomaticJava}"/><Button Grid.Column="1" Content="{DynamicResource Text.Browse}" Click="BrowseJava"/></Grid></StackPanel>
       <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Classes="secondary"/>
     </StackPanel></ScrollViewer>
-    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,18,0,0"><Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/><Button Name="SaveProfileButton" Content="{DynamicResource Text.Save}" Classes="primary" Click="Save" IsEnabled="{Binding IsIdle}"/></StackPanel>
+    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="8">
+      <TextBlock Name="DraftSummary" Text="{Binding ProfileDraftSummary}" TextWrapping="Wrap" Classes="secondary"/>
+      <StackPanel IsVisible="{Binding JavaPreparing}" Spacing="5">
+        <TextBlock Text="{Binding DownloadDetails}" TextWrapping="Wrap" Classes="secondary"/>
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding DownloadProgressValue}" IsIndeterminate="{Binding DownloadIndeterminate}"/>
+      </StackPanel>
+      <TextBlock Name="ImportStatus" IsVisible="False" Text="{Binding Status}" TextWrapping="Wrap" Classes="secondary"/>
+      <Panel Name="ManualHint"><TextBlock Name="MissingProfileFieldsHint" IsVisible="{Binding !ProfileFieldsComplete}" Text="{Binding MissingProfileFieldsText}" TextWrapping="Wrap"/></Panel>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+        <Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/>
+        <Button Name="SaveProfileButton" Content="{DynamicResource Text.Save}" Classes="primary" Click="Save"><Button.IsEnabled><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsIdle"/><Binding Path="ProfileFieldsComplete"/></MultiBinding></Button.IsEnabled></Button>
+      </StackPanel>
+    </StackPanel>
   </Grid>
 </Window>

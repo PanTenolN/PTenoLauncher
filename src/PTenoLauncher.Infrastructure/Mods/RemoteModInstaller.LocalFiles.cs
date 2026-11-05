@@ -7,12 +7,14 @@ namespace PTenoLauncher.Infrastructure.Mods;
 
 public sealed record LocalModSelection(ModCartItem Item, string Sha512, CatalogModVersion? Identity);
 public sealed record LocalDependencyPlan(RemoteInstallPlan Remote, IReadOnlyList<LocalModSelection> LocalFiles,
-    IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings, bool ManualOnly = false,
+    IReadOnlyList<ModIdentityConflict>? Conflicts = null)
 {
     public bool CanInstall => Blockers.Count == 0 && Remote.Resolution.Blockers.Count == 0 &&
         (LocalFiles.Count > 0 || Remote.Resolution.Entries.Count > 0);
     public bool RequiresUnknownAcceptance => LocalFiles.Any(f => f.Identity is null);
-    public long DownloadBytes => Remote.Resolution.Entries.Where(e => !e.AlreadyInstalled && !e.FromLocalFile).Sum(e => e.Version.File.Size);
+    public IEnumerable<ModPlanEntry> Downloads => RemoteModInstaller.DistinctArtifacts(Remote.Resolution.Entries.Where(e => !e.AlreadyInstalled && !e.FromLocalFile));
+    public long DownloadBytes => Downloads.Sum(e => e.Version.File.Size);
 }
 
 public sealed partial class RemoteModInstaller
@@ -37,12 +39,14 @@ public sealed partial class RemoteModInstaller
             inspected.Size != item.Inspection.Size || inspected.FileName != item.Inspection.FileName)
             throw new InvalidDataException("Локальний JAR змінився після додавання у кошик: " + item.Inspection.FileName);
         var hash = Convert.ToHexString(await SHA512.HashDataAsync(input, ct)).ToLowerInvariant();
-        return new(new(item.SourcePath, inspected), hash, null);
+        return new(new(item.SourcePath, inspected, item.Reason), hash, null);
     }
     public async Task<LocalDependencyPlan> PreviewLocalAsync(GameProfile profile, IReadOnlyList<ModCartItem> files,
-        IReadOnlyList<RemoteModRequest>? requests = null, CancellationToken ct = default, IReadOnlyList<OptionalDependencyKey>? optionalSelections = null)
+        IReadOnlyList<RemoteModRequest>? requests = null, CancellationToken ct = default, IReadOnlyList<OptionalDependencyKey>? optionalSelections = null,
+        bool manualOnly = false, bool automaticOptional = false)
     {
         requests ??= [];
+        if (manualOnly && requests.Count != 0) throw new InvalidOperationException("Manual import cannot include catalog requests.");
         if (files.Count + requests.Count is < 1 or > 128) throw new InvalidOperationException("Оберіть від 1 до 128 локальних файлів або проєктів.");
         if (profile.Loader == ModLoader.Vanilla) throw new InvalidOperationException("Для модів потрібен Mod Loader.");
         using var lease = new ProfileUsage(paths).Acquire(profile.Id);
@@ -51,7 +55,7 @@ public sealed partial class RemoteModInstaller
         if (Directory.Exists(transactions) && Directory.EnumerateFiles(transactions, "mods-*.json").Any())
             throw new InvalidOperationException("Спочатку відновіть незавершене встановлення модів.");
         catalog.BeginOperation();
-        var snapshot = await ScanAsync(profile, true, ct);
+        var snapshot = await ScanAsync(profile, !manualOnly, ct);
         var selected = new List<LocalModSelection>(); var blockers = new List<string>(); var warnings = snapshot.Warnings.ToList();
         var hashes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in files)
@@ -59,7 +63,7 @@ public sealed partial class RemoteModInstaller
             var selection = await InspectSelectionAsync(file, ct);
             if (!hashes.Add(selection.Sha512)) { blockers.Add("Повторюваний локальний JAR: " + file.Inspection.FileName); continue; }
             CatalogModVersion? identity = null;
-            try { identity = await catalog.FindBySha512Async(selection.Sha512, ct); }
+            try { if (!manualOnly) identity = await catalog.FindBySha512Async(selection.Sha512, ct); }
             catch (Exception ex) when (!ct.IsCancellationRequested && ex is InvalidDataException or HttpRequestException or JsonException or TaskCanceledException)
             { warnings.Add(file.Inspection.FileName + ": ідентифікація за SHA512 недоступна; використано лише локальні метадані."); }
             if (identity is not null && (identity.File.Size != selection.Item.Inspection.Size || !identity.File.Sha512.Equals(selection.Sha512, StringComparison.OrdinalIgnoreCase)))
@@ -72,8 +76,14 @@ public sealed partial class RemoteModInstaller
         var identities = selected.Where(s => s.Identity is not null).Select(s => s.Identity!).ToArray();
         var roots = requests.Concat(identities.Select(v => new RemoteModRequest(v.ProjectId, v.Id))).Distinct().ToArray();
         var resolution = roots.Length == 0 ? new DependencyResolution([], [], [], []) :
-            await new RemoteDependencyResolver(new SeededCatalog(catalog, identities)).ResolveWithOptionalAsync(profile, roots, snapshot.Known, optionalSelections ?? [], ct);
+            await new RemoteDependencyResolver(new SeededCatalog(catalog, identities)).ResolveWithOptionalAsync(
+                profile, roots, snapshot.Known, optionalSelections ?? [], ct, automatic: automaticOptional);
+        resolution = WithInstalledArtifacts(resolution, snapshot);
         var entries = resolution.Entries.Select(e => e with { FromLocalFile = hashes.Contains(e.Version.File.Sha512) }).ToArray();
+        var localSizes = selected.ToDictionary(s => s.Sha512, s => s.Item.Inspection.Size, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Where(e => e.FromLocalFile))
+            if (entry.Version.File.Size != localSizes[entry.Version.File.Sha512])
+                blockers.Add("Розмір локального JAR не відповідає метаданим Modrinth: " + entry.Version.File.Name);
         foreach (var selection in selected.Where(s => s.Identity is not null))
         {
             var present = snapshot.Known.FirstOrDefault(i => i.Version.ProjectId == selection.Identity!.ProjectId);
@@ -89,18 +99,25 @@ public sealed partial class RemoteModInstaller
             blockers.AddRange(review.Details.Where(b => b.Kind == ModBlockerKind.Definite).Select(b => b.Message));
             warnings.AddRange(review.Details.Where(b => b.Kind != ModBlockerKind.Definite).Select(b => "Попередня перевірка локальних файлів: " + b.Message));
         }
+        else if (manualOnly)
+        {
+            blockers.AddRange(review.Details.Where(b => b.Kind != ModBlockerKind.MissingDependency).Select(b => b.Message));
+            warnings.AddRange(review.Details.Where(b => b.Kind == ModBlockerKind.MissingDependency).Select(b => b.Message));
+        }
         else blockers.AddRange(review.Blockers);
         warnings.AddRange(review.Warnings);
         resolution = resolution with { Entries = entries };
         var remote = new RemoteInstallPlan(profile.Id, profile.MinecraftVersion, profile.Loader, snapshot.Fingerprint, resolution, catalog.UsedCache);
-        return new(remote, selected, blockers.Distinct().ToArray(), warnings.Distinct().ToArray());
+        return new(remote, selected, blockers.Distinct().ToArray(), warnings.Distinct().ToArray(), manualOnly,
+            review.Details.Select(b => b.Conflict).OfType<ModIdentityConflict>().ToArray());
     }
     public async Task InstallLocalAsync(GameProfile profile, LocalDependencyPlan plan, bool confirmed, bool unknownAccepted,
         IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
         if (!confirmed) throw new InvalidOperationException("Підтвердьте повний кошик локальних модів і залежностей.");
         if (plan.RequiresUnknownAcceptance && !unknownAccepted) throw new InvalidOperationException("Підтвердьте внутрішнє попередження про Unknown Source.");
-        if (!plan.CanInstall || plan.Remote.ProfileId != profile.Id || plan.Remote.MinecraftVersion != profile.MinecraftVersion || plan.Remote.Loader != profile.Loader)
+        if (!plan.CanInstall || plan.Remote.ProfileId != profile.Id || plan.Remote.MinecraftVersion != profile.MinecraftVersion || plan.Remote.Loader != profile.Loader ||
+            (plan.ManualOnly && plan.Remote.Resolution.Entries.Count != 0))
             throw new InvalidOperationException("План несумісний із профілем або містить помилки.");
         using var lease = new ProfileUsage(paths).Acquire(profile.Id);
         new ProfileUsage(paths).CheckWorldLocks(profile.Id);
@@ -115,20 +132,24 @@ public sealed partial class RemoteModInstaller
             if (!plan.Remote.Resolution.Entries.Any(e => e.AlreadyInstalled && e.Version.File.Sha512 == file.Sha512))
                 cart.Add(current.Item with { Inspection = current.Item.Inspection with { SourceStatus = file.Identity is null ? "Unknown Source" : "Local file / Modrinth SHA512" } });
         }
-        foreach (var entry in plan.Remote.Resolution.Entries.Where(e => !e.AlreadyInstalled && !e.FromLocalFile))
+        foreach (var entry in plan.Downloads)
         {
             var file = entry.Version.File;
             var destination = SafePath.Join(paths.Cache, "modrinth/files/" + file.Sha512 + "/" + file.Name);
             await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
             var inspected = await local.InspectAsync(destination, ct);
-            cart.Add(new(destination, inspected with { SourceStatus = "Modrinth" }));
+            cart.Add(new(destination, inspected with { SourceStatus = "Modrinth" }, entry.Reason, entry.Title));
         }
         if ((await ScanAsync(profile, false, ct)).Fingerprint != plan.Remote.InstalledFingerprint)
             throw new InvalidOperationException("Встановлені моди змінилися під час завантаження. Повторіть розрахунок.");
         // Recheck original inputs after downloads, then one real-JAR review and one durable transaction.
         foreach (var file in plan.LocalFiles)
             if ((await InspectSelectionAsync(file.Item, ct)).Sha512 != file.Sha512) throw new InvalidDataException("Локальний JAR змінився під час завантаження.");
-        if (cart.Count > 0) await local.InstallUnderLeaseAsync(profile, cart, true, ct);
+        if (cart.Count > 0)
+        {
+            progress?.Report(new("", 0, null, Installing: true));
+            await local.InstallUnderLeaseAsync(profile, cart, true, ct, allowMissingDependencies: plan.ManualOnly);
+        }
         await store.AddHistoryAsync(profile.Id, "mods.combined", "local=" + plan.LocalFiles.Count + "; catalog=" + plan.Remote.Resolution.Entries.Count, CancellationToken.None);
     }
 }

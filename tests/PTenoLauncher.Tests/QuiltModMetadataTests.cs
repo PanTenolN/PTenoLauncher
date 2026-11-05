@@ -133,15 +133,16 @@ public sealed class QuiltModMetadataTests
         Assert.Contains(result.Issues, i => i.Code == "mods.metadata.unknown"); Assert.Contains(result.Issues, i => i.Code == "mods.constraint.unknown");
         Assert.Equal(OfflineReadinessState.Unknown, new ReadinessReport(result.Issues, 0).State);
     }
-    [Fact] public async Task ConditionalNestedModulesAreNotAssumedActiveAndNothingIsExtracted()
+    [Fact] public async Task RequiredNativeNestedCandidateIsSelectedWithoutFlatteningProvidesOrExtracting()
     {
         using var ws = new TestWorkspace(); var p = await Profile(ws); var child = Path.Combine(ws.Paths.Root, "child.jar"); Jar(child, "bundled");
         var file = Path.Combine(ws.Paths.Game(p.Id), "mods", "parent.jar");
         Jar(file, "parent", depends:"[\"bundled\"]", extra:",\"jars\":[\"META-INF/jars/child.jar\"]", nested:await File.ReadAllBytesAsync(child));
         var mods = new LocalModManager(ws.Paths, ws.Store); var info = await mods.InspectAsync(file);
-        Assert.Empty(info.ProvidedMods!); Assert.Contains(info.MetadataWarnings!, w => w.Contains("JAR"));
-        var result = await Check(ws, p); Assert.Contains(result.Issues, i => i.Code == "mods.metadata.unknown");
-        Assert.Contains(result.Issues, i => i.Code == "mods.dependency.missing"); Assert.False(Directory.Exists(Path.Combine(ws.Paths.Cache, "META-INF")));
+        Assert.Empty(info.ProvidedMods!); Assert.Empty(info.MetadataWarnings!); Assert.Single(info.Nested!.Candidates);
+        var result = await Check(ws, p); Assert.DoesNotContain(result.Issues, i => i.Code == "mods.metadata.unknown");
+        Assert.DoesNotContain(result.Issues, i => i.Code == "mods.dependency.missing"); Assert.True(result.NativeSelection!.Confirmed); Assert.Single(result.NativeSelection.Artifacts);
+        Assert.False(Directory.Exists(Path.Combine(ws.Paths.Cache, "META-INF")));
     }
     [Theory]
     [InlineData("../outside.jar")]

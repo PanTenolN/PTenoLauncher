@@ -54,15 +54,11 @@ public sealed partial class LocalModManager
                 provided.Add(new(aliasId, aliasVersion, aliasGroup));
             }
         }
-        if (loader.TryGetProperty("jars", out var jars) && jars.GetArrayLength() > 0)
-        {
-            // Quilt selects conditional nested candidates with its solver. Never assume all are active.
-            warnings.Add("Вкладені Quilt JAR перевірено як архіви; вибір умовних модулів поки невідомий.");
-            await ValidateQuiltNestedAsync(zip, loader, 0, new EmbeddedBudget(), ct);
-        }
+        var loadType = loader.TryGetProperty("load_type", out var type) ? type.GetString() ?? "unknown" : "if_required";
+        if (loadType is not ("always" or "if_possible" or "if_required")) warnings.Add("Непідтримуваний Quilt load_type: " + loadType);
         if (root.TryGetProperty("plugins", out _) || loader.TryGetProperty("plugins", out _))
             warnings.Add("Quilt loader plugins не виконуються під час перевірки; їхній вплив невідомий.");
-        return new(id, name, version, environment, new(group, depends, breaks), provided);
+        return new(id, name, version, environment, new(group, depends, breaks, loadType), provided);
     }
     private static void ValidateQuiltIdentity(string id, string group)
     {
@@ -107,25 +103,5 @@ public sealed partial class LocalModManager
             supported = value.EnumerateObject().All(p => p.Name is "id" or "versions" or "optional" or "unless" or "reason");
         }
         return new(id, versions, optional, unless, Supported: supported);
-    }
-    private async Task ValidateQuiltNestedAsync(ZipArchive zip, JsonElement loader, int depth, EmbeddedBudget budget, CancellationToken ct)
-    {
-        if (depth > 4) throw new InvalidDataException("Перевищено ліміт вкладених Quilt JAR.");
-        if (!loader.TryGetProperty("jars", out var jars)) return;
-        foreach (var child in jars.EnumerateArray())
-        {
-            if (++budget.Count > 64 || depth >= 4) throw new InvalidDataException("Перевищено ліміт вкладених Quilt JAR.");
-            ct.ThrowIfCancellationRequested(); var name = child.GetString()!;
-            _ = SafePath.Join(paths.Cache, name);
-            var entry = zip.GetEntry(name) ?? throw new InvalidDataException("Відсутній вкладений Quilt JAR: " + name);
-            if ((budget.Bytes += entry.Length) > 128L * 1024 * 1024) throw new InvalidDataException("Перевищено бюджет вкладених Quilt JAR.");
-            using var memory = new MemoryStream(await ReadBoundedEntryAsync(entry, 32 * 1024 * 1024, ct), false);
-            using var nested = new ZipArchive(memory, ZipArchiveMode.Read); SafeArchive.Validate(nested, paths.Cache);
-            var metadata = nested.GetEntry("quilt.mod.json");
-            if (metadata is null) continue;
-            using var doc = JsonDocument.Parse(await ReadBoundedEntryAsync(metadata, 1024 * 1024, ct), new() { MaxDepth = 32 });
-            ValidateQuiltKeys(doc.RootElement);
-            await ValidateQuiltNestedAsync(nested, doc.RootElement.GetProperty("quilt_loader"), depth + 1, budget, ct);
-        }
     }
 }
