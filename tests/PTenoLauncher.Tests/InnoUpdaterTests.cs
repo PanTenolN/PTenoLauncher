@@ -14,7 +14,7 @@ public sealed class InnoUpdaterTests
         var source = new DirectoryInfo(AppContext.BaseDirectory);
         while (source is not null && !File.Exists(Path.Combine(source.FullName, "PTenoLauncher.sln"))) source = source.Parent;
         Assert.NotNull(source);
-        var exe = Path.Combine(source.FullName, ".tools", "dotnet", "dotnet.exe");
+        var exe = TestDotnetHost.Resolve(source.FullName);
         var info = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
         info.ArgumentList.Add(Path.Combine(source.FullName, "tests", "PTenoLauncher.IntegrationSmoke", "bin", "Release", "net10.0", "PTenoLauncher.IntegrationSmoke.dll"));
         info.ArgumentList.Add("--argument-probe"); UpdateProcessIdentity? identity = null;

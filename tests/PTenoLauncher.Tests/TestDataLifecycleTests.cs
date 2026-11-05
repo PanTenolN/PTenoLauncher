@@ -15,7 +15,7 @@ public sealed class TestDataLifecycleTests
     [Theory][InlineData("success",0)][InlineData("failure",1)][InlineData("cancel",2)][InlineData("abandon",0)]
     public async Task ExecutableRunnerCleansAllOutcomesAndRecoversAbandonedOwnedRoot(string mode,int expected)
     {
-        var dotnet=Path.Combine(OwnedTestRoot.ProjectRoot,".tools","dotnet","dotnet.exe");
+        var dotnet=TestDotnetHost.Resolve(OwnedTestRoot.ProjectRoot);
         async Task<(int Exit,string Output)> Run(string dll,params string[] args)
         {
             var start=new System.Diagnostics.ProcessStartInfo(dotnet){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=OwnedTestRoot.ProjectRoot};
