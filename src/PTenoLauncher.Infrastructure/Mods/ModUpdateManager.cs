@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using PTenoLauncher.Core;
+using PTenoLauncher.Infrastructure.Modpacks;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
 
@@ -16,10 +17,13 @@ public sealed partial class ModUpdateManager(LauncherPaths paths, ILauncherStore
     private string PlanPath(Guid id, Guid op) => SafePath.Join(OperationRoot(id, op), "plan.json");
     private string OperationPath(Guid id, Guid op) => SafePath.Join(OperationRoot(id, op), "operation.json");
     internal static string PendingPath(LauncherPaths p, Guid id) => SafePath.Join(p.Profile(id), "transactions/mod-update.json");
+    internal static string WorkingPendingPath(LauncherPaths p, Guid id) => SafePath.Join(p.Profile(id), "transactions/working-restore.json");
+    private string PendingPath(ModUpdatePlan plan) => plan.Kind == "Working" ? WorkingPendingPath(paths, plan.ProfileId) : PendingPath(paths, plan.ProfileId);
     internal static void RequireNoPending(LauncherPaths p, Guid id)
     {
         var transactions = SafePath.Join(p.Profile(id), "transactions");
-        if (File.Exists(PendingPath(p, id)) || Directory.Exists(transactions) && Directory.EnumerateFiles(transactions, "mods-*.json").Any()) throw Error("UpdatesRecovery");
+        if (File.Exists(PendingPath(p, id)) || File.Exists(WorkingPendingPath(p, id)) ||
+            Directory.Exists(transactions) && Directory.EnumerateFiles(transactions, "mods-*.json").Any()) throw Error("UpdatesRecovery");
     }
     private async Task<byte[]?> ReadBytes(string file, CancellationToken ct)
     {
@@ -28,16 +32,21 @@ public sealed partial class ModUpdateManager(LauncherPaths paths, ILauncherStore
         using var m = new MemoryStream(); await s.CopyToAsync(m, ct); return m.ToArray();
     }
     private static string Hash(byte[]? bytes) => bytes is null ? "absent" : Convert.ToHexString(SHA256.HashData(bytes));
-    internal static string Fingerprint(ModSetState s) => Hash(JsonSerializer.SerializeToUtf8Bytes(new { s.Profile, s.Files, Inventory = Hash(s.Inventory), Pins = Hash(s.Pins), Epoch = Hash(s.Epoch), s.ContextHash }, AtomicFile.JsonOptions));
-    private async Task<ModSetState> Capture(GameProfile p, CancellationToken ct, bool partial = false)
+    internal static string Fingerprint(ModSetState s) => Hash(JsonSerializer.SerializeToUtf8Bytes(new { s.Profile, s.Files, Inventory = Hash(s.Inventory), Pins = Hash(s.Pins), Epoch = Hash(s.Epoch), s.ContextHash, Receipt = Hash(s.Receipt) }, AtomicFile.JsonOptions));
+    private async Task<ModSetState> Capture(GameProfile p, CancellationToken ct, bool partial = false, bool working = false)
     {
         ProfileRules.Validate(p);
         if (!(await store.GetProfilesAsync(ct)).Contains(p)) throw Error("UpdatesStale");
         var dir = SafePath.Join(paths.Game(p.Id), "mods");
         var files = Directory.Exists(dir) ? Directory.EnumerateFileSystemEntries(dir).Take(8193).ToArray() : [];
         if (files.Length > 8192) throw Error("UpdatesIntegrity", "Mods directory exceeds 8192 entries.");
-        foreach (var f in files) { SafePath.RejectLinks(f); if (Directory.Exists(f) || Path.GetFileName(f).Contains(".pending-", StringComparison.Ordinal)) throw Error("UpdatesIntegrity", "Unsupported/pending mods layout."); }
-        var jars = files.Where(f => Path.GetExtension(f).Equals(".jar", StringComparison.OrdinalIgnoreCase)).OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToArray();
+        foreach (var f in files)
+        {
+            if (working && !IsModPath(f, true) && !Path.GetFileName(f).Contains(".pending-", StringComparison.Ordinal)) continue;
+            SafePath.RejectLinks(f);
+            if (Directory.Exists(f) || Path.GetFileName(f).Contains(".pending-", StringComparison.Ordinal)) throw Error("UpdatesIntegrity", "Unsupported/pending mods layout.");
+        }
+        var jars = files.Where(f => IsModPath(f, working)).OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToArray();
         if (jars.Length > 128) throw Error("UpdatesIntegrity", "Update workflow is bounded to 128 root JARs.");
         var states = new List<ModFileState>();
         foreach (var f in jars) states.Add(await FileState(f, "mods/" + Path.GetFileName(f), ct));
@@ -46,12 +55,20 @@ public sealed partial class ModUpdateManager(LauncherPaths paths, ILauncherStore
         foreach (var old in partial ? [] : inv?.Files ?? [])
             if (!states.Any(f => f.Path == old.RelativePath && f.Size == old.Size && f.Sha256.Equals(old.Sha256, StringComparison.OrdinalIgnoreCase)))
                 throw Error("UpdatesIntegrity", old.RelativePath);
+        var receipt = await ReadBytes(paths.Receipt(p.Id), ct);
+        var quilt = Hash(await ReadBytes(SafePath.Join(paths.Game(p.Id), "config/quilt-loader-overrides.json"), ct));
+        var context = working
+            ? Hash(JsonSerializer.SerializeToUtf8Bytes(new { QuiltOverrides = quilt, Pack = Hash(await ReadBytes(
+                SafePath.Join(paths.Profile(p.Id), MrpackImporter.ReceiptName), ct)) }))
+            : Hash(JsonSerializer.SerializeToUtf8Bytes(new { Receipt = Hash(receipt), QuiltOverrides = quilt }));
         var state = new ModSetState(p, states, await ReadBytes(new ModInventoryStore(paths).PathFor(p.Id), ct), await ReadBytes(PinsPath(p.Id), ct), await ReadBytes(EpochPath(p.Id), ct),
-            Hash(JsonSerializer.SerializeToUtf8Bytes(new { Receipt = Hash(await ReadBytes(paths.Receipt(p.Id), ct)), QuiltOverrides = Hash(await ReadBytes(SafePath.Join(paths.Game(p.Id), "config/quilt-loader-overrides.json"), ct)) })));
+            context, working ? receipt : null);
         var pins = ReadPins(state);
         foreach (var pin in pins.Pins) if (!partial && !states.Contains(pin.File)) throw Error("UpdatesPinConflict", pin.File.Path);
         return state;
     }
+    private static bool IsDisabled(string path) => path.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase);
+    private static bool IsModPath(string path, bool includeDisabled) => path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || includeDisabled && IsDisabled(path);
     private async Task<ModFileState> FileState(string file, string relative, CancellationToken ct)
     {
         _ = SafePath.Join(paths.Cache, relative); SafePath.RejectLinks(file);
@@ -66,9 +83,11 @@ public sealed partial class ModUpdateManager(LauncherPaths paths, ILauncherStore
         foreach (var p in pins.Pins) { ValidateFile(p.File); if (p.Provider is { } v) { ValidateVersion(v); if (v.File.Sha512 != p.File.Sha512 || v.File.Size != p.File.Size) throw Error("UpdatesIntegrity"); } }
         return pins;
     }
-    private void ValidateFile(ModFileState f)
+    private void ValidateFile(ModFileState f, bool working = false)
     {
-        new ModInventoryStore(paths).Validate(Guid.Empty, new(Guid.Empty, [new(f.Path, f.Sha256, f.Size)]));
+        _ = SafePath.Join(paths.Cache, f.Path);
+        var enabledPath = working && IsDisabled(f.Path) ? f.Path[..^".disabled".Length] : f.Path;
+        new ModInventoryStore(paths).Validate(Guid.Empty, new(Guid.Empty, [new(enabledPath, f.Sha256, f.Size)]));
         if (f.Sha512.Length != 128 || !f.Sha512.All(Uri.IsHexDigit)) throw Error("UpdatesIntegrity");
     }
     private void ValidateVersion(CatalogModVersion v)

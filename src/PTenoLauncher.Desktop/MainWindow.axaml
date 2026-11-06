@@ -4,21 +4,21 @@
       <Border Width="208" IsVisible="{Binding !IsProfileWorkspace}" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Padding="18,26">
         <Grid RowDefinitions="Auto,*,Auto">
           <StackPanel Spacing="6" Margin="10,0,0,30"><TextBlock Text="PTenoLauncher" FontSize="20" FontWeight="Bold"/><TextBlock Text="JAVA EDITION" FontSize="10" LetterSpacing="2" Classes="secondary"/></StackPanel>
-          <StackPanel Grid.Row="1" Spacing="5">
+          <StackPanel Grid.Row="1" Spacing="5" IsEnabled="{Binding !DataLoadFailed}">
             <Button Content="{DynamicResource Text.Home}" Tag="Home" Click="Navigate" Classes="nav"/>
             <Button Content="{DynamicResource Text.Profiles}" Tag="Profiles" Click="Navigate" Classes="nav"/>
-            <Button Name="ModsNavButton" IsVisible="{Binding CanManageMods}" Content="{DynamicResource Text.Mods}" Tag="Mods" Click="Navigate" Classes="nav"/>
             <Button Content="{DynamicResource Text.Modpacks}" Tag="Modpacks" Click="Navigate" Classes="nav"/>
             <Button Content="{DynamicResource Text.Servers}" Tag="Servers" Click="Navigate" Classes="nav"/>
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="10,16"/>
             <Button Content="{DynamicResource Text.Settings}" Tag="Settings" Click="Navigate" Classes="nav"/>
           </StackPanel>
-      <StackPanel Grid.Row="2" Spacing="12"><CheckBox Content="{DynamicResource Text.Offline}" IsChecked="{Binding Offline}" IsEnabled="{Binding IsIdle}"/><TextBlock Text="{Binding PreviewVersion}" Classes="secondary" FontSize="10"/></StackPanel>
+      <StackPanel Grid.Row="2" Spacing="10"><SelectableTextBlock Text="{Binding DataRoot}" TextWrapping="Wrap" Classes="secondary" FontSize="10"/><Button Name="ChooseDataRootButton" Click="ChooseDataRoot" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"><TextBlock Text="{DynamicResource Text.DataChooseRoot}" TextWrapping="Wrap"/></Button><CheckBox Content="{DynamicResource Text.Offline}" IsChecked="{Binding ManualOffline, Mode=TwoWay}" Click="SaveManualOffline" IsEnabled="{Binding IsIdle}"/><TextBlock Text="{Binding PreviewVersion}" Classes="secondary" FontSize="10"/></StackPanel>
         </Grid>
       </Border>
       <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="32,26">
-        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,26"><TextBlock Text="{Binding PageTitle}" FontSize="25" FontWeight="SemiBold"/><StackPanel Grid.Column="1" Spacing="5" HorizontalAlignment="Right"><Button Name="HeaderSignInButton" Content="{DynamicResource Text.PerformSignIn}" Command="{Binding SignInCommand}" IsEnabled="{Binding IsIdle}" IsVisible="{Binding NeedsSignIn}" Classes="primary" HorizontalAlignment="Right" Padding="16,8"/><TextBlock Name="HeaderAccountName" Text="{Binding Account}" IsVisible="{Binding HasAccount}" FontSize="12"/><TextBlock Text="{Binding ModeText}" FontSize="10" Classes="secondary"/></StackPanel></Grid>
-        <Panel Grid.Row="1">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,26"><TextBlock Text="{Binding PageTitle}" FontSize="25" FontWeight="SemiBold"/><StackPanel Grid.Column="1" Spacing="5" HorizontalAlignment="Right"><Button Name="HeaderSignInButton" Content="{DynamicResource Text.PerformSignIn}" Command="{Binding SignInCommand}" IsEnabled="{Binding IsIdle}" IsVisible="{Binding ShowSignIn}" Classes="primary" HorizontalAlignment="Right" Padding="16,8"/><TextBlock Name="HeaderAccountName" Text="{Binding Account}" IsVisible="{Binding HasAccount}" FontSize="12"/><TextBlock Text="{Binding ModeText}" FontSize="10" Classes="secondary"/></StackPanel></Grid>
+        <TextBlock Grid.Row="1" Name="DataLoadError" IsVisible="{Binding DataLoadFailed}" Text="{Binding Status}" TextWrapping="Wrap"/>
+        <Panel Grid.Row="1" IsVisible="{Binding !DataLoadFailed}">
           <ScrollViewer IsVisible="{Binding IsHome}"><StackPanel Spacing="20">
             <Border Classes="card" IsVisible="{Binding NoProfile}" Padding="32">
               <StackPanel Spacing="14" MaxWidth="520" HorizontalAlignment="Center" Margin="0,55">
@@ -44,11 +44,6 @@
                   </WrapPanel>
                 </StackPanel>
               </Border>
-              <Border Name="FabricLoaderPanel" Classes="card" IsVisible="{Binding IsFabricProfile}"><StackPanel Spacing="12">
-                <TextBlock Text="Fabric Loader" FontSize="16" FontWeight="SemiBold"/>
-                <WrapPanel><Button IsVisible="{Binding !UsesSavedLoaderVersion}" Content="{DynamicResource Text.FabricVersions}" Click="LoadFabricVersions" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/><ComboBox IsVisible="{Binding !UsesSavedLoaderVersion}" ItemsSource="{Binding FabricVersions}" SelectedItem="{Binding SelectedFabricVersion}" SelectionChanged="RememberFabricVersion" IsEnabled="{Binding IsIdle}" MinWidth="220" Margin="0,0,0,8"/></WrapPanel>
-                <TextBlock Text="{Binding FabricStatus}" Classes="secondary" TextWrapping="Wrap"/>
-              </StackPanel></Border>
               <Border Name="QuiltLoaderPanel" Classes="card" IsVisible="{Binding IsQuiltProfile}"><StackPanel Spacing="12">
                 <TextBlock Text="Quilt Loader" FontSize="16" FontWeight="SemiBold"/>
                 <WrapPanel><Button IsVisible="{Binding !UsesSavedLoaderVersion}" Content="{DynamicResource Text.QuiltVersions}" Click="LoadQuiltVersions" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/><ComboBox IsVisible="{Binding !UsesSavedLoaderVersion}" ItemsSource="{Binding QuiltVersions}" SelectedItem="{Binding SelectedQuiltVersion}" IsEnabled="{Binding IsIdle}" MinWidth="220" Margin="0,0,0,8"/></WrapPanel>
@@ -86,9 +81,8 @@
                   <TextBlock Text="{Binding SelectedProfile.Summary}" Classes="secondary" TextWrapping="Wrap"/>
                   <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" HorizontalAlignment="Stretch" Classes="primary"/>
                   <Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstallGame}" HorizontalAlignment="Stretch"/>
-                  <Button Content="{DynamicResource Text.EditProfile}" Click="EditProfile" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
+                  <Button Name="ProfilesEditButton" Content="{DynamicResource Text.EditProfile}" Click="EditProfile" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
                   <Button Name="ProfilesFolderButton" Content="{DynamicResource Text.ProfileFolder}" Click="OpenProfileFolder" HorizontalAlignment="Stretch"/>
-                  <Button Content="{DynamicResource Text.Mods}" Click="Navigate" Tag="Mods" IsVisible="{Binding CanManageMods}" HorizontalAlignment="Stretch"/>
                   <Button Content="⋯" AutomationProperties.Name="{DynamicResource Text.Settings}" HorizontalAlignment="Stretch"><Button.Flyout><Flyout><StackPanel Spacing="6"><Button Content="{DynamicResource Text.Archive}" Command="{Binding ArchiveCommand}" IsVisible="{Binding !SelectedProfile.Archived}" HorizontalAlignment="Stretch"/>
                   <Button Content="{DynamicResource Text.Unarchive}" Click="Unarchive" IsVisible="{Binding SelectedProfile.Archived}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
                   <Button Content="{DynamicResource Text.Delete}" Click="DeleteProfile" Classes="danger" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/></StackPanel></Flyout></Button.Flyout></Button>
@@ -96,7 +90,7 @@
               </Border>
             </ScrollViewer>
           </Grid>
-          <Grid IsVisible="{Binding HasModsWorkspace}" ColumnDefinitions="Auto,*">
+          <Grid Name="ProfileWorkspaceView" IsVisible="{Binding IsProfileWorkspace}" ColumnDefinitions="Auto,*">
             <ScrollViewer IsVisible="{Binding IsProfileWorkspace}" Width="178" Margin="0,0,20,0" HorizontalScrollBarVisibility="Disabled">
               <StackPanel Spacing="8">
                 <Button Name="WorkspaceBack" Content="{DynamicResource Text.WorkspaceBack}" Click="BackFromWorkspace" IsEnabled="{Binding CanLeaveWorkspace}" HorizontalAlignment="Stretch"/>
@@ -104,7 +98,7 @@
                 <Button Content="{DynamicResource Text.WorkspaceOverview}" Click="SelectProfileSection" Tag="Overview" Classes.primary="{Binding WorkspaceOverview}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.WorkspaceVersions}" Click="SelectProfileSection" Tag="Versions" Classes.primary="{Binding WorkspaceVersions}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.Settings}" Click="SelectProfileSection" Tag="Settings" Classes.primary="{Binding WorkspaceSettings}" HorizontalAlignment="Stretch"/>
-                <Button Content="{DynamicResource Text.Mods}" Click="SelectProfileSection" Tag="Mods" Classes.primary="{Binding WorkspaceMods}" HorizontalAlignment="Stretch"/>
+                <Button Name="ProfileModsSection" Content="{DynamicResource Text.Mods}" Click="SelectProfileSection" Tag="Mods" Classes.primary="{Binding WorkspaceMods}" HorizontalAlignment="Stretch"/>
                 <Button Name="ProfileResourcePacks" Content="{DynamicResource Text.ContentResourcePacks}" Click="SelectProfileSection" Tag="ResourcePacks" Classes.primary="{Binding WorkspaceResourcePacks}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.ContentShaders}" Click="SelectProfileSection" Tag="Shaders" Classes.primary="{Binding WorkspaceShaders}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.ContentWorlds}" Click="SelectProfileSection" Tag="Worlds" Classes.primary="{Binding WorkspaceWorlds}" HorizontalAlignment="Stretch"/>
@@ -121,10 +115,12 @@
                 </StackPanel>
                 <WrapPanel Grid.Row="1" IsEnabled="{Binding IsIdle}">
                   <Button Name="WorkspaceAddPack" Content="{DynamicResource Text.ContentAddFile}" Click="ChooseWorkspacePack" IsVisible="{Binding WorkspaceCanImportPack}" Margin="0,0,8,4"/>
-                  <Button Content="{DynamicResource Text.ContentDownloadResources}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceResourcePacks}" IsEnabled="{Binding !Offline}" Margin="0,0,8,4"/>
-                  <Button Content="{DynamicResource Text.ContentDownloadShaders}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceShaders}" IsEnabled="{Binding !Offline}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.ContentDownloadResources}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceResourcePacks}" IsEnabled="{Binding CanUseOnlineContent}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.ContentDownloadShaders}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceShaders}" IsEnabled="{Binding CanUseOnlineContent}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentOpenFolder}" Click="OpenWorkspaceContent" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorkspaceRefresh}" Click="RefreshWorkspaceFiles" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentCopy}" Click="ChangeWorkspaceContent" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
+                  <Button Name="OrganizePackNames" Content="{DynamicResource Text.ProfileNamesOrganize}" Click="RenameWorkspaceFile" IsVisible="{Binding WorkspaceCanImportPack}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.Delete}" Click="ChangeWorkspaceContent" Tag="remove" Classes="danger" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
                 </WrapPanel>
                 <ListBox Grid.Row="2" Name="WorkspaceContentList" ItemsSource="{Binding WorkspaceContentRows}" SelectedItem="{Binding WorkspaceContentSelection}">
@@ -138,10 +134,13 @@
                 <TextBlock Text="{Binding ProfileJavaStatus}" TextWrapping="Wrap"/>
                 <Button Content="{DynamicResource Text.ProfileJavaRetry}" Click="AutoJava" IsVisible="{Binding CanRetryJava}" IsEnabled="{Binding IsIdle}"/>
                 <TextBlock Text="{Binding Readiness}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding WorkingSummary}" TextWrapping="Wrap"/>
                 <WrapPanel>
                   <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" Margin="0,0,8,8"/>
                   <Button Content="{DynamicResource Text.ReadyCheck}" Command="{Binding CheckCommand}" Margin="0,0,8,8"/>
                   <Button Name="ExportProfilePackButton" Content="{DynamicResource Text.ExportPack}" Click="ExportProfilePack" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
+                  <Button Name="MarkWorkingButton" Content="{DynamicResource Text.WorkingMark}" Click="MarkWorking" IsEnabled="{Binding CanMarkWorking}" Margin="0,0,8,8"/>
+                  <Button Name="ReviewWorkingButton" Content="{DynamicResource Text.WorkingReview}" Click="ReviewWorking" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
                 </WrapPanel>
               </StackPanel></Border></ScrollViewer>
               <ScrollViewer IsVisible="{Binding WorkspaceVersions}"><Border Classes="card"><StackPanel Spacing="10">
@@ -152,7 +151,9 @@
                 <Border Classes="card" VerticalAlignment="Top">
                   <WrapPanel>
                     <Button Content="{DynamicResource Text.EditProfile}" Click="EditWorkspaceSettings" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
-                    <Button Content="{DynamicResource Text.ProfileFolderMove}" Click="MoveWorkspaceFolder" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
+                    <Button Name="OrganizeProfileName" Content="{DynamicResource Text.ProfileNamesOrganize}" Click="MoveWorkspaceFolder" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
+                    <Button Content="{DynamicResource Text.ProfileFolderRestore}" Click="MoveWorkspaceFolder" Tag="restore" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
+                    <Button Content="{DynamicResource Text.ProfileFileRestore}" Click="RenameWorkspaceFile" Tag="restore" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
                     <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" Margin="0,0,10,8"/>
                     <Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstallGame}" Margin="0,0,10,8"/>
                   </WrapPanel>
@@ -220,18 +221,15 @@
                   <TextBlock IsVisible="{Binding !WorkspaceInstalledMods.Count}" Text="{DynamicResource Text.WorkspaceNoMods}" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
-          <Grid Name="ProfileModDropZone" DragDrop.AllowDrop="True" IsVisible="{Binding WorkspaceModTableVisible}" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+          <Grid Name="ProfileModDropZone" DragDrop.AllowDrop="True" IsVisible="{Binding WorkspaceModTableVisible}" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
             <WrapPanel>
-              <Button Name="WorkspaceCatalogButton" Content="{DynamicResource Text.DownloadMods}" Click="OpenModCatalog" Classes="primary" IsEnabled="{Binding CanUseOnlineCatalog}" Margin="0,0,8,6"/>
+              <Button Name="WorkspaceCatalogButton" Content="{DynamicResource Text.DownloadMods}" Click="OpenModCatalog" Classes="primary" Margin="0,0,8,6" IsEnabled="{Binding CanUseOnlineCatalog}"/>
               <Button Content="{DynamicResource Text.LocalMods}" Click="ImportMods" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/>
-              <Button Name="WorkspaceCartButton" Content="{DynamicResource Text.Cart}" Click="OpenCart" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/>
-              <Button Content="{DynamicResource Text.OpenModsFolder}" Click="OpenModsFolder" Margin="0,0,8,6"/>
+              <Button Name="OpenModsFolderButton" Content="{DynamicResource Text.OpenModsFolder}" Click="OpenModsFolder" Margin="0,0,8,6"/>
+              <Button Content="{DynamicResource Text.WorkspaceRefresh}" Click="RefreshWorkspaceFiles" Margin="0,0,8,6"/>
               <Button Content="{DynamicResource Text.ModBaselineTitle}" Click="ReviewInstalledMods" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/>
             </WrapPanel>
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-              <TextBox Text="{Binding WorkspaceModQuery}" PlaceholderText="{DynamicResource Text.Search}"/>
-              <Button Grid.Column="1" Content="{DynamicResource Text.Name}" Click="SortWorkspaceMods"/>
-            </Grid>
+            <TextBox Grid.Row="1" Text="{Binding WorkspaceModQuery}" PlaceholderText="{DynamicResource Text.Search}"/>
             <TextBlock Grid.Row="2" Text="{Binding ActiveMods}" Classes="secondary"/>
             <Grid Grid.Row="3" RowDefinitions="Auto,*">
               <Grid ColumnDefinitions="72,2*,*,*" ColumnSpacing="8" Margin="10,0,10,5">
@@ -248,46 +246,39 @@
               <TextBlock Grid.Row="1" IsVisible="{Binding !WorkspaceModRows.Count}" Text="{DynamicResource Text.WorkspaceNoMods}" IsHitTestVisible="False" Margin="12" VerticalAlignment="Top"/>
             </Grid>
             <TextBlock Grid.Row="4" IsVisible="{Binding Offline}" Text="{DynamicResource Text.OfflineModsHint}" TextWrapping="Wrap" Classes="secondary"/>
+            <Expander Grid.Row="5" Name="ModUpdatesPanel" Header="{DynamicResource Text.UpdatesTitle}" HorizontalContentAlignment="Stretch">
+              <ScrollViewer MaxHeight="240" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="{DynamicResource Text.UpdatesHint}" TextWrapping="Wrap" Classes="secondary"/>
+                  <WrapPanel IsEnabled="{Binding IsIdle}">
+                    <Button Name="CheckModUpdatesButton" Content="{DynamicResource Text.UpdatesCheck}" Click="CheckModUpdates" Margin="0,0,10,6" IsEnabled="{Binding CanUseOnlineContent}"/>
+                    <CheckBox Content="{DynamicResource Text.UpdatesPrerelease}" IsChecked="{Binding IncludeModPrereleases}"/>
+                  </WrapPanel>
+                  <ListBox Name="ModUpdateList" ItemsSource="{Binding UpdateChoices}" SelectedItem="{Binding SelectedUpdate}" IsEnabled="{Binding IsIdle}" MaxHeight="230">
+                    <ListBox.ItemTemplate><DataTemplate><StackPanel Spacing="4" Margin="6">
+                      <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontSize="12"/>
+                      <WrapPanel><CheckBox Content="{DynamicResource Text.UpdatesSelectChange}" IsChecked="{Binding IsSelected}" Margin="0,0,16,0"/><CheckBox Content="{DynamicResource Text.UpdatesRemove}" IsChecked="{Binding Remove}"/></WrapPanel>
+                    </StackPanel></DataTemplate></ListBox.ItemTemplate>
+                  </ListBox>
+                  <WrapPanel IsEnabled="{Binding IsIdle}">
+                    <Button Content="{DynamicResource Text.UpdatesPreview}" Click="PreviewModUpdates" Margin="0,0,10,6"/>
+                    <Button Content="{DynamicResource Text.UpdatesPin}" Click="PinModVersion" Margin="0,0,10,6"/>
+                    <Button Content="{DynamicResource Text.UpdatesUnpin}" Click="UnpinModVersion" Margin="0,0,10,6"/>
+                  </WrapPanel>
+                  <TextBlock Name="ModUpdateSummaryText" Text="{Binding ModUpdateSummary}" TextWrapping="Wrap" FontSize="12"/>
+                  <CheckBox Name="ModUpdatesConfirm" Content="{DynamicResource Text.UpdatesAccept}" IsChecked="{Binding UpdatesConfirmed}" IsEnabled="{Binding IsIdle}"/>
+                  <Button Name="ApplyModUpdatesButton" Content="{DynamicResource Text.UpdatesApply}" Click="ApplyModUpdates" IsEnabled="{Binding IsIdle}"/>
+                  <TextBlock Text="{DynamicResource Text.UpdatesHistory}" FontWeight="SemiBold"/>
+                  <ComboBox Name="ModUpdateHistoryList" ItemsSource="{Binding ModUpdateHistory}" SelectedItem="{Binding SelectedUpdateHistory}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                  <WrapPanel IsEnabled="{Binding IsIdle}">
+                    <Button Content="{DynamicResource Text.UpdatesRefreshHistory}" Click="LoadModUpdateHistory" Margin="0,0,10,6"/>
+                    <Button Content="{DynamicResource Text.UpdatesRollback}" Click="PreviewModRollback" Margin="0,0,10,6"/>
+                    <Button Content="{DynamicResource Text.UpdatesRecover}" Click="RecoverModUpdates" Margin="0,0,10,6"/>
+                  </WrapPanel>
+                </StackPanel>
+              </ScrollViewer>
+            </Expander>
           </Grid>
-          <ScrollViewer Name="ModsScroll" IsVisible="{Binding IsGlobalMods}"><StackPanel Spacing="16">
-            <Border Classes="card" Name="ModUpdatesPanel"><StackPanel Spacing="10">
-              <TextBlock Text="{DynamicResource Text.UpdatesTitle}" FontWeight="SemiBold" FontSize="18"/>
-              <TextBlock Text="{DynamicResource Text.UpdatesHint}" TextWrapping="Wrap" Classes="secondary"/>
-              <WrapPanel IsEnabled="{Binding IsIdle}">
-                <Button Name="CheckModUpdatesButton" Content="{DynamicResource Text.UpdatesCheck}" Click="CheckModUpdates" Margin="0,0,10,6"/>
-                <CheckBox Content="{DynamicResource Text.UpdatesPrerelease}" IsChecked="{Binding IncludeModPrereleases}"/>
-              </WrapPanel>
-              <ListBox Name="ModUpdateList" ItemsSource="{Binding UpdateChoices}" SelectedItem="{Binding SelectedUpdate}" IsEnabled="{Binding IsIdle}" MaxHeight="230">
-                <ListBox.ItemTemplate><DataTemplate><StackPanel Spacing="4" Margin="6">
-                  <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontSize="12"/>
-                  <WrapPanel><CheckBox Content="{DynamicResource Text.UpdatesSelectChange}" IsChecked="{Binding IsSelected}" Margin="0,0,16,0"/><CheckBox Content="{DynamicResource Text.UpdatesRemove}" IsChecked="{Binding Remove}"/></WrapPanel>
-                </StackPanel></DataTemplate></ListBox.ItemTemplate>
-              </ListBox>
-              <WrapPanel IsEnabled="{Binding IsIdle}">
-                <Button Content="{DynamicResource Text.UpdatesPreview}" Click="PreviewModUpdates" Margin="0,0,10,6"/>
-                <Button Content="{DynamicResource Text.UpdatesPin}" Click="PinModVersion" Margin="0,0,10,6"/>
-                <Button Content="{DynamicResource Text.UpdatesUnpin}" Click="UnpinModVersion" Margin="0,0,10,6"/>
-              </WrapPanel>
-              <TextBlock Name="ModUpdateSummaryText" Text="{Binding ModUpdateSummary}" TextWrapping="Wrap" FontSize="12"/>
-              <CheckBox Name="ModUpdatesConfirm" Content="{DynamicResource Text.UpdatesAccept}" IsChecked="{Binding UpdatesConfirmed}" IsEnabled="{Binding IsIdle}"/>
-              <Button Name="ApplyModUpdatesButton" Content="{DynamicResource Text.UpdatesApply}" Click="ApplyModUpdates" IsEnabled="{Binding IsIdle}"/>
-              <TextBlock Text="{DynamicResource Text.UpdatesHistory}" FontWeight="SemiBold"/>
-              <ComboBox Name="ModUpdateHistoryList" ItemsSource="{Binding ModUpdateHistory}" SelectedItem="{Binding SelectedUpdateHistory}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
-              <WrapPanel IsEnabled="{Binding IsIdle}">
-                <Button Content="{DynamicResource Text.UpdatesRefreshHistory}" Click="LoadModUpdateHistory" Margin="0,0,10,6"/>
-                <Button Content="{DynamicResource Text.UpdatesRollback}" Click="PreviewModRollback" Margin="0,0,10,6"/>
-                <Button Content="{DynamicResource Text.UpdatesRecover}" Click="RecoverModUpdates" Margin="0,0,10,6"/>
-              </WrapPanel>
-            </StackPanel></Border>
-            <WrapPanel><Button Name="ReviewInstalledModsButton" Content="{DynamicResource Text.ModBaselineTitle}" Click="ReviewInstalledMods" IsEnabled="{Binding IsIdle}" Margin="0,0,10,4"/><Button Name="OpenModsFolderButton" Content="{DynamicResource Text.OpenModsFolder}" Click="OpenModsFolder" Margin="0,0,0,4"/></WrapPanel>
-            <WrapPanel>
-              <Button Content="{DynamicResource Text.DownloadMods}" Click="OpenModCatalog" IsEnabled="{Binding CanUseOnlineCatalog}" Margin="0,0,8,6"/>
-              <Button Content="{DynamicResource Text.Cart}" Click="OpenCart" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/>
-            </WrapPanel>
-            <Border Classes="card" Name="ModDropZone" DragDrop.AllowDrop="True">
-              <StackPanel Spacing="14"><TextBlock Text="{DynamicResource Text.DropHint}" Classes="secondary" TextWrapping="Wrap"/><Button Content="{DynamicResource Text.LocalMods}" Click="ImportMods" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/></StackPanel>
-            </Border>
-          </StackPanel></ScrollViewer>
               </Panel>
             </Grid>
           </Grid>
@@ -351,7 +342,7 @@
                 <TextBlock Text="{DynamicResource Text.AiUxBilling}" TextWrapping="Wrap" Classes="secondary"/>
                 <WrapPanel><Button Content="{DynamicResource Text.AiUxGetKey}" Click="OpenApiKeys" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiUxBillingLink}" Click="OpenApiBilling"/></WrapPanel>
                 <CheckBox Name="AiConnectionConsent" IsChecked="{Binding AiConnectionConsent, Mode=TwoWay}"><TextBlock Text="{DynamicResource Text.AiUxConnectionConsent}" TextWrapping="Wrap"/></CheckBox>
-                <Button Name="CheckAiConnectionButton" Content="{DynamicResource Text.AiUxCheckConnection}" Click="CheckAiConnection" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
+                <Button Name="CheckAiConnectionButton" Content="{DynamicResource Text.AiUxCheckConnection}" Click="CheckAiConnection" HorizontalAlignment="Left" IsEnabled="{Binding CanUseOnlineAi}"/>
                 <TextBlock Text="{DynamicResource Text.AiModel}"/><ComboBox Name="AiModelPicker" ItemsSource="{Binding AiModels}" SelectedItem="{Binding SelectedAiModel, Mode=TwoWay}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
                 <Button Name="SaveAiModelButton" Content="{DynamicResource Text.Save}" Click="SaveAiModel" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/><TextBlock Text="{DynamicResource Text.AiUxModelHint}" TextWrapping="Wrap" Classes="secondary"/><TextBlock Text="{DynamicResource Text.AiUxPermissions}" TextWrapping="Wrap" Classes="secondary"/>
                 <Expander Header="{DynamicResource Text.AiUxAdvanced}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><TextBlock Text="{DynamicResource Text.AiUxManualModel}"/><TextBox Name="AiManualModel" Text="{Binding AiModel, Mode=TwoWay}" IsEnabled="{Binding IsIdle}" MaxLength="100"/><Button Content="{DynamicResource Text.Save}" Click="SaveAiConfiguration" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/><TextBlock Text="{DynamicResource Text.AiPrivacy}" TextWrapping="Wrap" Classes="secondary"/></StackPanel></Expander>
@@ -394,13 +385,13 @@
               <Grid ColumnDefinitions="2*,3*,Auto" ColumnSpacing="8"><TextBlock Text="{DynamicResource Text.AiUxOriginal}"/><TextBlock Grid.Column="1" Text="{DynamicResource Text.AiUxTranslation}"/><TextBlock Grid.Column="2" Text="{DynamicResource Text.AiUxState}"/></Grid>
               <ListBox Name="TranslationTable" ItemsSource="{Binding VisibleTranslationRows}" MaxHeight="360"><ListBox.ItemTemplate><DataTemplate><Grid ColumnDefinitions="2*,3*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,4"><StackPanel><SelectableTextBlock Text="{Binding Original}" TextWrapping="Wrap"/><Expander Header="{DynamicResource Text.AiUxAdvanced}"><SelectableTextBlock Text="{Binding Key}" TextWrapping="Wrap"/></Expander></StackPanel><TextBox Grid.Column="1" Text="{Binding Translation, Mode=TwoWay}" TextWrapping="Wrap" AcceptsReturn="True" MinWidth="100" MaxHeight="180" IsEnabled="{Binding $parent[Window].DataContext.IsIdle}"/><TextBlock Grid.Column="2" Text="{Binding State}" TextWrapping="Wrap" MaxWidth="90"/><CheckBox Grid.Column="3" Content="{DynamicResource Text.AiUxAcceptRow}" IsChecked="{Binding ReviewConfirmed, Mode=TwoWay}" IsEnabled="{Binding $parent[Window].DataContext.IsIdle}"/><CheckBox Grid.Column="4" Content="{DynamicResource Text.AiUxTrialRow}" IsChecked="{Binding TrialSelected, Mode=TwoWay}" IsEnabled="{Binding $parent[Window].DataContext.IsIdle}"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
               <WrapPanel><Button Name="SaveTranslationEdits" Content="{DynamicResource Text.Save}" Click="SaveTranslationEditor" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiUxDiscard}" Click="DiscardTranslationEdits" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiUxOpenFolder}" Click="OpenTranslationsFolder" IsEnabled="{Binding HasProfile}"/></WrapPanel>
-              <StackPanel IsVisible="{Binding AiEnabled}" Spacing="8"><TextBlock Text="{DynamicResource Text.AiUxTrialHint}" TextWrapping="Wrap"/><WrapPanel><Button IsEnabled="{Binding IsIdle}" Name="SelectTranslationSample" Content="{DynamicResource Text.AiUxSelectSample}" Click="SelectTrialSample" Margin="0,0,8,6"/><Button Name="PreviewTranslationTrial" Content="{DynamicResource Text.AiUxPreviewTrial}" Click="PreviewTrial" IsEnabled="{Binding IsIdle}"/></WrapPanel><TextBox Name="TranslationTransferPreview" Text="{Binding TranslationTransferPreview}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="200"/><CheckBox Name="TranslationTransferConsent" IsChecked="{Binding TranslationConsent, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"><TextBlock Text="{DynamicResource Text.AiConsent}" TextWrapping="Wrap"/></CheckBox><Button Name="TranslateTrial" Content="{DynamicResource Text.AiUxRunTrial}" Click="RunTrial" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/></StackPanel>
+              <StackPanel IsVisible="{Binding AiEnabled}" Spacing="8"><TextBlock Text="{DynamicResource Text.AiUxTrialHint}" TextWrapping="Wrap"/><WrapPanel><Button IsEnabled="{Binding IsIdle}" Name="SelectTranslationSample" Content="{DynamicResource Text.AiUxSelectSample}" Click="SelectTrialSample" Margin="0,0,8,6"/><Button Name="PreviewTranslationTrial" Content="{DynamicResource Text.AiUxPreviewTrial}" Click="PreviewTrial" IsEnabled="{Binding IsIdle}"/></WrapPanel><TextBox Name="TranslationTransferPreview" Text="{Binding TranslationTransferPreview}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="200"/><CheckBox Name="TranslationTransferConsent" IsChecked="{Binding TranslationConsent, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"><TextBlock Text="{DynamicResource Text.AiConsent}" TextWrapping="Wrap"/></CheckBox><Button Name="TranslateTrial" Content="{DynamicResource Text.AiUxRunTrial}" Click="RunTrial" HorizontalAlignment="Left" IsEnabled="{Binding CanUseOnlineAi}"/></StackPanel>
               <TextBlock Text="{Binding TranslationPackResult}" TextWrapping="Wrap"/><TextBlock Text="{DynamicResource Text.AiUxEnablePack}" TextWrapping="Wrap" Classes="secondary"/>
-              <Expander Header="{DynamicResource Text.AiUxFullTranslation}" IsVisible="{Binding AiEnabled}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><Button Name="PreviewTranslationRequest" Content="{DynamicResource Text.AiUxReviewTransfer}" Click="PreviewTranslationTransfer" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/><Button Name="ContinueTranslation" Content="{DynamicResource Text.AiUxContinue}" Click="TranslateMods" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/></StackPanel></Expander>
+              <Expander Header="{DynamicResource Text.AiUxFullTranslation}" IsVisible="{Binding AiEnabled}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><Button Name="PreviewTranslationRequest" Content="{DynamicResource Text.AiUxReviewTransfer}" Click="PreviewTranslationTransfer" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/><Button Name="ContinueTranslation" Content="{DynamicResource Text.AiUxContinue}" Click="TranslateMods" HorizontalAlignment="Left" IsEnabled="{Binding CanUseOnlineAi}"/></StackPanel></Expander>
               <Button Content="{DynamicResource Text.AiUxPackFolder}" Click="OpenGeneratedPackFolder" HorizontalAlignment="Left"/>
               <Button Content="{DynamicResource Text.AiUxClientMetadata}" Click="ImportClientPackMetadata" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
               <Expander Header="{DynamicResource Text.AiUxDeleteEntry}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><Button Name="PreviewDeleteTranslation" Content="{DynamicResource Text.AiUxDeleteEntry}" Click="PreviewTranslationDelete" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/><TextBlock Text="{Binding TranslationDeleteText}" TextWrapping="Wrap"/><CheckBox Name="ConfirmTranslationDelete" IsChecked="{Binding TranslationDeleteConsent, Mode=TwoWay}"><TextBlock Text="{DynamicResource Text.AiUxDeleteConfirm}" TextWrapping="Wrap"/></CheckBox><Button Name="DeleteTranslationEntry" Content="{DynamicResource Text.AiUxDeleteEntry}" Click="OnDeleteTranslationEntry" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/></StackPanel></Expander>
-              <Expander Header="{DynamicResource Text.AiUxAdvanced}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><TextBlock Text="{DynamicResource Text.AiUxTechnicalEditor}"/><TextBox Name="TranslationEditor" Text="{Binding AiEditor, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" MaxHeight="260" FontFamily="Consolas"/><TextBlock Text="{DynamicResource Text.AiPackHint}" TextWrapping="Wrap"/><TextBox Text="{Binding AiPackFormat, Mode=TwoWay}"/><WrapPanel IsVisible="{Binding AiEnabled}"><Button Content="{DynamicResource Text.AiUxReviewAll}" Click="PreviewAllTranslations" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiTranslateAll}" Click="TranslateAllMods"/></WrapPanel></StackPanel></Expander>
+              <Expander Header="{DynamicResource Text.AiUxAdvanced}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="8"><TextBlock Text="{DynamicResource Text.AiUxTechnicalEditor}"/><TextBox Name="TranslationEditor" Text="{Binding AiEditor, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" MaxHeight="260" FontFamily="Consolas"/><TextBlock Text="{DynamicResource Text.AiPackHint}" TextWrapping="Wrap"/><TextBox Text="{Binding AiPackFormat, Mode=TwoWay}"/><WrapPanel IsVisible="{Binding AiEnabled}"><Button Content="{DynamicResource Text.AiUxReviewAll}" Click="PreviewAllTranslations" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiTranslateAll}" Click="TranslateAllMods" IsEnabled="{Binding CanUseOnlineAi}"/></WrapPanel></StackPanel></Expander>
             </StackPanel></ScrollViewer></TabItem>
 
             <TabItem Header="{DynamicResource Text.UpdaterTitle}"><ScrollViewer><StackPanel Spacing="12" Margin="0,18,0,0">
@@ -408,7 +399,7 @@
               <CheckBox Name="AutomaticLauncherUpdates" Content="{DynamicResource Text.UpdaterAuto}" IsChecked="{Binding AutoLauncherUpdates}"/>
               <CheckBox Name="PreviewLauncherUpdates" Content="{DynamicResource Text.UpdaterPreviews}" IsChecked="{Binding PreviewLauncherUpdates}"/>
               <WrapPanel><Button Content="{DynamicResource Text.Save}" Click="SaveLauncherUpdateSettings" IsEnabled="{Binding IsIdle}" Margin="0,0,10,6"/>
-                <Button Name="CheckLauncherUpdatesButton" Content="{DynamicResource Text.UpdaterCheck}" Click="CheckLauncherUpdates" Margin="0,0,10,6"/></WrapPanel>
+                <Button Name="CheckLauncherUpdatesButton" Content="{DynamicResource Text.UpdaterCheck}" Click="CheckLauncherUpdates" Margin="0,0,10,6" IsEnabled="{Binding CanUseOnlineContent}"/></WrapPanel>
               <TextBlock Text="{Binding LauncherUpdateStatus}" TextWrapping="Wrap"/>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="{DynamicResource Text.History}"><ListBox ItemsSource="{Binding History}" Margin="0,18,0,0"><ListBox.ItemTemplate><DataTemplate><StackPanel Spacing="5" Margin="10"><TextBlock Text="{Binding Action}" FontWeight="SemiBold"/><TextBlock Text="{Binding Details}" TextWrapping="Wrap"/><TextBlock Text="{Binding At}" Classes="secondary" FontSize="10"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox></TabItem>
@@ -429,15 +420,6 @@
                       </WrapPanel>
                     </StackPanel>
                   </Border>
-                  <Border Classes="card" IsVisible="{Binding CanManageMods}">
-                    <StackPanel Spacing="12">
-                      <TextBlock Text="{DynamicResource Text.Mods}" FontWeight="SemiBold"/>
-                      <WrapPanel>
-                        <Button Name="SettingsModsCatalogButton" Content="{DynamicResource Text.Mods}" Tag="Mods" Click="Navigate" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
-                        <Button Name="SettingsImportModsButton" Content="{DynamicResource Text.LocalMods}" Click="ImportMods" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
-                      </WrapPanel>
-                    </StackPanel>
-                  </Border>
                 </StackPanel>
               </ScrollViewer>
             </TabItem>
@@ -446,7 +428,8 @@
       </Grid>
     </Grid>
     <Border Grid.Row="1" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,10">
-      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
+      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+        <TextBlock Grid.Row="2" Grid.ColumnSpan="3" IsVisible="{Binding ShowNetworkNotice}" Text="{DynamicResource Text.NetworkLost}" Classes="secondary" TextWrapping="Wrap" Margin="0,4,0,0"/>
         <Panel>
           <TextBlock Name="StatusText" Text="{Binding Status}" IsVisible="{Binding !DownloadActive}" Classes="secondary" TextWrapping="Wrap" MaxHeight="58"/>
           <TextBlock Text="{Binding DownloadDetails}" IsVisible="{Binding DownloadActive}" Classes="secondary" TextWrapping="Wrap" MaxHeight="58"/>
@@ -454,8 +437,8 @@
         <Button Grid.Column="1" Name="DownloadHistoryButton" Content="{DynamicResource Text.DownloadHistory}" Tag="Downloads" Click="Navigate" Margin="8,0,0,0"/>
         <Button Grid.Column="2" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}" Padding="10,4" Margin="12,0,0,0"/>
         <ProgressBar Grid.Row="1" Grid.ColumnSpan="3" IsVisible="{Binding DownloadActive}" Value="{Binding DownloadProgressValue}" IsIndeterminate="{Binding DownloadIndeterminate}" Height="4" Margin="0,8,0,0"/>
-        <ProgressBar Grid.Row="1" Grid.ColumnSpan="3" IsIndeterminate="True" Height="2" Margin="0,8,0,0">
-          <ProgressBar.IsVisible><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsBusy"/><Binding Path="!DownloadActive"/></MultiBinding></ProgressBar.IsVisible>
+        <ProgressBar Name="OperationProgress" Grid.Row="1" Grid.ColumnSpan="3" IsIndeterminate="True" Height="2" Margin="0,8,0,0">
+          <ProgressBar.IsVisible><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsBusy"/><Binding Path="!DownloadActive"/><Binding Path="!GameProcessStarted"/></MultiBinding></ProgressBar.IsVisible>
         </ProgressBar>
       </Grid>
     </Border>

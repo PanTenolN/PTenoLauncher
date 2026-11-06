@@ -16,7 +16,7 @@ public sealed class InnoUpdaterTests
         Assert.NotNull(source);
         var exe = TestDotnetHost.Resolve(source.FullName);
         var info = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
-        info.ArgumentList.Add(Path.Combine(source.FullName, "tests", "PTenoLauncher.IntegrationSmoke", "bin", "Release", "net10.0", "PTenoLauncher.IntegrationSmoke.dll"));
+        info.ArgumentList.Add(PTenoLauncher.Testing.OwnedTestRoot.BuildArtifact("PTenoLauncher.IntegrationSmoke", "PTenoLauncher.IntegrationSmoke", "tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll"));
         info.ArgumentList.Add("--argument-probe"); UpdateProcessIdentity? identity = null;
         var code = await new InnoUpdateProcess().RunAsync(info, id => { identity = id; return Task.CompletedTask; });
         Assert.Equal(0, code); Assert.NotNull(identity); Assert.True(identity.Pid > 0); Assert.True(identity.StartTicks > 0); Assert.Equal(Path.GetFullPath(exe), identity.Executable);

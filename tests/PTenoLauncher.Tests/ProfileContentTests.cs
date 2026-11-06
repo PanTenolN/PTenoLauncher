@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using PTenoLauncher.Core;
@@ -18,6 +19,59 @@ namespace PTenoLauncher.Tests;
 
 public sealed class ProfileContentTests
 {
+    [AvaloniaFact]
+    public async Task ShaderSearchReplacesAnOlderRequestAndShowsOfflineSeparately()
+    {
+        using var ws = new TestWorkspace();
+        using var transport = new ShaderSearchTransport();
+        using var services = new LauncherServices(ws.Paths, coreTransport: transport);
+        await services.Store.InitializeAsync();
+        var profile = ws.Profile();
+        await services.Store.SaveProfileAsync(profile);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        var dialog = new ContentCatalogDialog(vm, profile, ProfileContentKind.Shaders);
+        dialog.Show();
+        try
+        {
+            var query = dialog.FindControl<TextBox>("ContentQuery")!;
+            query.Text = "older";
+            await transport.Started.Task.WaitAsync(TimeSpan.FromSeconds(6));
+            query.Text = "current";
+            var results = dialog.FindControl<ListBox>("ContentResults")!;
+            await WaitForAsync(() => results.ItemCount == 1);
+            Assert.True(transport.Cancelled);
+            Assert.Equal("Current shader", Assert.IsType<CatalogSearchHit>(Assert.Single(results.Items)).Title);
+            vm.Offline = true;
+            query.Text = "offline";
+            await WaitForAsync(() => dialog.FindControl<TextBlock>("ContentSearchStatus")!.Text ==
+                PTenoLauncher.Desktop.Localization.TextCatalog.Get("CatalogSearchOffline"));
+            Assert.Equal(2, transport.Requests);
+        }
+        finally { dialog.Close(); }
+    }
+
+    private sealed class ShaderSearchTransport : HttpMessageHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool Cancelled { get; private set; }
+        public int Requests { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Requests++;
+            var query = Uri.UnescapeDataString(request.RequestUri!.Query);
+            Assert.Contains("project_type:shader", query);
+            Assert.Contains("versions:1.21.1", query);
+            if (query.Contains("query=older", StringComparison.Ordinal))
+            {
+                Started.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                catch (OperationCanceledException) { Cancelled = true; throw; }
+            }
+            return Response("""{"hits":[{"project_id":"Current","slug":"current","title":"Current shader","description":"fixture"}]}""");
+        }
+    }
+
     [AvaloniaFact]
     public async Task ResourceCatalogInstallsTheSelectedZipInOnlyTheOpenedProfile()
     {
@@ -67,15 +121,18 @@ public sealed class ProfileContentTests
             Assert.Empty(routes);
             source.SelectedIndex = 0;
             dialog.FindControl<TextBox>("ContentQuery")!.Text = "fixture";
-            dialog.FindControl<Button>("ContentSearch")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var results = dialog.FindControl<ListBox>("ContentResults")!;
             await WaitForAsync(() => results.ItemCount == 1 && vm.IsIdle);
             results.SelectedIndex = 0;
-            var install = dialog.FindControl<Button>("ContentInstall")!;
-            await WaitForAsync(() => install.IsEnabled && vm.IsIdle);
+            var add = dialog.FindControl<Button>("ContentAdd")!;
+            await WaitForAsync(() => add.IsEnabled && vm.IsIdle);
+            Assert.True(dialog.FindControl<Button>("ContentProjectPage")!.IsVisible);
             Assert.Equal("4.2", Assert.IsType<CatalogModVersion>(dialog.FindControl<ComboBox>("ContentVersions")!.SelectedItem).Number);
             Assert.Equal("fixture.zip", dialog.FindControl<TextBlock>("ContentFile")!.Text);
-            install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.DoesNotContain("/data/Pack1234/versions/File1234/fixture.zip", routes);
+            dialog.FindControl<Button>("ContentDone")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            dialog.FindControl<Button>("ContentInstall")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await WaitForAsync(() => vm.IsIdle && vm.WorkspaceContentRows.Count == 1);
             Assert.True(vm.LastOperationSucceeded, vm.Status);
             Assert.Equal(bytes, await File.ReadAllBytesAsync(SafePath.Join(services.Content.Folder(first.Id, ProfileContentKind.ResourcePacks), "fixture.zip")));
@@ -86,6 +143,143 @@ public sealed class ProfileContentTests
     }
 
     private static HttpResponseMessage Response(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json) };
+
+    [Fact]
+    public async Task PhysicalZipNamesUseTheOriginalAndShortCollisionSuffix()
+    {
+        using var ws = new TestWorkspace();
+        var profile = ws.Profile() with { Name = "T1" };
+        await ws.Store.InitializeAsync();
+        await ws.Store.SaveProfileAsync(profile);
+        var pack = SafePath.Join(ws.Paths.Root, "Bare Bones.zip");
+        WriteZip(pack, "pack.mcmeta", """{"pack":{"pack_format":34,"description":"Bare Bones"}}""");
+        var content = new ProfileContent(ws.Paths);
+        var kind = ProfileContentKind.ResourcePacks;
+        Assert.Equal("Bare Bones.zip", (await content.ImportAsync(profile.Id, kind, pack)).FileName);
+        Assert.Equal("Bare Bones-2.zip", (await content.ImportAsync(profile.Id, kind, pack)).FileName);
+        var bytes = await File.ReadAllBytesAsync(pack);
+        var oldName = Convert.ToHexStringLower(SHA256.HashData(bytes)) + "-Bare Bones.zip";
+        var oldPath = SafePath.Join(content.Folder(profile.Id, kind), oldName);
+        await File.WriteAllBytesAsync(oldPath, bytes);
+        var renamer = new ProfileFileRenamer(ws.Paths, ws.Store, new(ws.Paths, ws.Store), content);
+        var plan = await renamer.PreviewAsync(profile.Id, "resourcepacks/" + oldName);
+        Assert.Equal("Bare Bones-3.zip", Path.GetFileName(plan.Target));
+        await renamer.ApplyAsync(plan);
+        Assert.False(File.Exists(oldPath));
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(plan.Target));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DoubleTapCartKeepsExactVersionsAcrossQueriesAndRetriesOnlyFailedPacks(bool shaders)
+    {
+        using var ws = new TestWorkspace();
+        var kind = shaders ? ProfileContentKind.Shaders : ProfileContentKind.ResourcePacks;
+        var type = shaders ? "shader" : "resourcepack";
+        var firstFile = shaders ? "First Shader.zip" : "Bare Bones.zip";
+        var zip = SafePath.Join(ws.Paths.Root, "fixture.zip");
+        WriteZip(zip, shaders ? "shaders/final.fsh" : "pack.mcmeta",
+            shaders ? "void main() {}" : """{"pack":{"pack_format":34,"description":"Fixture"}}""");
+        var bytes = await File.ReadAllBytesAsync(zip);
+        var digest = Convert.ToHexStringLower(SHA512.HashData(bytes));
+        var requests = new List<string>();
+        var failSecond = true;
+        object Version(string project, string suffix, string file) => new
+        {
+            id = project + suffix, project_id = project, version_number = suffix, name = "Fixture " + suffix,
+            date_published = suffix == "2" ? "2026-01-02T00:00:00Z" : "2026-01-01T00:00:00Z",
+            version_type = "release", game_versions = new[] { "1.21.1" },
+            loaders = new[] { shaders ? "iris" : "minecraft" }, dependencies = Array.Empty<object>(),
+            files = new[] { new { filename = file, size = bytes.Length, url = $"https://cdn.modrinth.com/data/{project}/{suffix}/{Uri.EscapeDataString(file)}", hashes = new { sha512 = digest } } }
+        };
+        using var transport = new StubHandler(request =>
+        {
+            var uri = request.RequestUri!;
+            var path = uri.AbsolutePath;
+            if (path.StartsWith("/data/", StringComparison.Ordinal))
+            {
+                requests.Add(path);
+                if (path.Contains("/Second/", StringComparison.Ordinal) && failSecond) return new(HttpStatusCode.ServiceUnavailable);
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+            }
+            if (path == "/v2/search")
+            {
+                var id = uri.Query.Contains("query=second", StringComparison.Ordinal) ? "Second" : "First";
+                return Response(JsonSerializer.Serialize(new { hits = new[] { new { project_id = id, slug = id, title = id, description = "Fixture" } } }));
+            }
+            if (path.EndsWith("/version", StringComparison.Ordinal))
+                return Response(JsonSerializer.Serialize(path.Contains("/First/") ? new[] { Version("First", "1", firstFile), Version("First", "2", "Latest.zip") } : new[] { Version("Second", "1", "Second Pack.zip") }));
+            return Response(JsonSerializer.Serialize(new { id = path.Split('/')[^1], project_type = type }));
+        });
+        using var services = new LauncherServices(ws.Paths, coreTransport: transport);
+        await services.Store.InitializeAsync();
+        var profile = ws.Profile() with { Name = "T1" };
+        var other = ws.Profile() with { Name = "T2" };
+        await services.Store.SaveProfileAsync(profile);
+        await services.Store.SaveProfileAsync(other);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(shaders ? ProfileSection.Shaders : ProfileSection.ResourcePacks);
+        var dialog = new ContentCatalogDialog(vm, profile, kind);
+        dialog.Show();
+        try
+        {
+            var query = dialog.FindControl<TextBox>("ContentQuery")!;
+            var hits = dialog.FindControl<ListBox>("ContentResults")!;
+            var rows = dialog.FindControl<ListBox>("ContentCartRows")!;
+            var versions = dialog.FindControl<ComboBox>("ContentVersions")!;
+            var install = dialog.FindControl<Button>("ContentInstall")!;
+            query.Text = "first";
+            await WaitForAsync(() => hits.ItemCount == 1);
+            hits.SelectedIndex = 0;
+            DoubleTap();
+            await WaitForAsync(() => rows.ItemCount == 1);
+            Assert.Equal("First2", Assert.IsType<ContentCartPick>(rows.Items[0]).Version.Id);
+            DoubleTap();
+            Assert.Equal(1, rows.ItemCount);
+            versions.SelectedIndex = 1;
+            DoubleTap();
+            Assert.Equal("First1", Assert.IsType<ContentCartPick>(rows.Items[0]).Version.Id);
+            query.Text = "second";
+            await WaitForAsync(() => hits.Items.OfType<CatalogSearchHit>().SingleOrDefault()?.Id == "Second");
+            hits.SelectedIndex = 0;
+            DoubleTap();
+            await WaitForAsync(() => rows.ItemCount == 2);
+            Click("ContentDone");
+            Click("ContentBack");
+            Assert.Equal("second", query.Text);
+            Assert.Empty(requests);
+            Click("ContentDone");
+            Click("ContentInstall");
+            await WaitForAsync(() => vm.IsIdle && rows.Items.OfType<ContentCartPick>().Any(pick => pick.Installed));
+            Assert.True(File.Exists(SafePath.Join(services.Content.Folder(profile.Id, kind), firstFile)));
+            Assert.False(File.Exists(SafePath.Join(services.Content.Folder(profile.Id, kind), "Latest.zip")));
+            Assert.True(install.IsEnabled);
+            failSecond = false;
+            Click("ContentInstall");
+            await WaitForAsync(() => vm.IsIdle && rows.Items.OfType<ContentCartPick>().All(pick => pick.Installed));
+            Assert.Equal(1, requests.Count(path => path.Contains("/First/1/")));
+            Assert.Equal(2, requests.Count(path => path.Contains("/Second/1/")));
+            Assert.True(File.Exists(SafePath.Join(services.Content.Folder(profile.Id, kind), "Second Pack.zip")));
+            Assert.Empty(Directory.EnumerateFiles(services.Content.Folder(other.Id, kind)));
+        }
+        finally { dialog.Close(); }
+
+        void Click(string name) => dialog.FindControl<Button>(name)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        void DoubleTap()
+        {
+            dialog.UpdateLayout();
+            var list = dialog.FindControl<ListBox>("ContentResults")!;
+            var item = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
+            using var pointer = new Pointer(1, PointerType.Mouse, true);
+            var press = new PointerEventArgs(InputElement.PointerPressedEvent, item, pointer, dialog, default, 0,
+                new PointerPointProperties(), KeyModifiers.None);
+            item.RaiseEvent(new TappedEventArgs(InputElement.DoubleTappedEvent, press));
+        }
+    }
+
     private static async Task WaitForAsync(Func<bool> condition)
     {
         for (var i = 0; i < 250 && !condition(); i++) await Task.Delay(10);
@@ -110,7 +304,7 @@ public sealed class ProfileContentTests
         var shader = await content.ImportAsync(first.Id, ProfileContentKind.Shaders, source);
         Assert.Equal("shader.zip", shader.FileName);
         Assert.Equal(bytes, await File.ReadAllBytesAsync(source));
-        await Assert.ThrowsAsync<IOException>(() => content.ImportAsync(first.Id, ProfileContentKind.Shaders, source));
+        Assert.Equal("shader-2.zip", (await content.ImportAsync(first.Id, ProfileContentKind.Shaders, source)).FileName);
         Assert.Empty(await content.ListAsync(second.Id, ProfileContentKind.Shaders));
 
         var world = SafePath.Join(content.Folder(first.Id, ProfileContentKind.Worlds), "Fixture World");

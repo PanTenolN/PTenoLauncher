@@ -26,8 +26,8 @@ public static class AiNativeProbe
                 using(var z=System.IO.Compression.ZipFile.Open(jar,System.IO.Compression.ZipArchiveMode.Create)){using var s=z.CreateEntry("assets/synthetic/lang/fr_fr.json").Open();JsonSerializer.Serialize(s,new Dictionary<string,string>{{"hello","Bonjour %s"}});}
                 await translations.ImportAsync(p,[jar],"uk_ua",sourceLocale:"fr_fr");await translations.SaveManualAsync(p,"uk_ua","synthetic",new Dictionary<string,string>{{"hello","Вітаю %s"}},sourceLocale:"fr_fr");
                 SqliteConnection.ClearAllPools();
-                var dotnet=Path.Combine(OwnedTestRoot.ProjectRoot,".tools","dotnet","dotnet.exe");
-                var app=Path.Combine(OwnedTestRoot.ProjectRoot,"src","PTenoLauncher.Desktop","bin","Release","net10.0","PTenoLauncher.dll");
+                var dotnet=Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? Path.Combine(OwnedTestRoot.ProjectRoot,".tools","dotnet","dotnet.exe");
+                var app=OwnedTestRoot.BuildArtifact("PTenoLauncher.Desktop", "PTenoLauncher", "src/PTenoLauncher.Desktop/bin/Release/net10.0/PTenoLauncher.dll");
                 var start=new ProcessStartInfo(dotnet){UseShellExecute=false,CreateNoWindow=true,WorkingDirectory=owned.Root};
                 foreach(var a in new[]{app,"--data-root",owned.Root,"--smoke-test","--smoke-page","Settings","--smoke-settings-tab",tab,"--smoke-size","980","680","--capture-ui"})start.ArgumentList.Add(a);
                 using var process=Process.Start(start)??throw new IOException("Cannot start owned native UI probe.");

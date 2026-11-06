@@ -7,7 +7,7 @@
     <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="16" RowSpacing="10" Margin="20">
     <StackPanel Grid.ColumnSpan="2" Spacing="6">
       <TextBlock Name="EditorTitle" Text="{DynamicResource Text.EditProfile}" FontSize="23" FontWeight="SemiBold"/>
-      <StackPanel Name="ManualName"><TextBlock Text="{DynamicResource Text.Name}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding MissingProfileName}"><TextBox Name="ProfileNameInput" Text="{Binding ProfileName}"/></Border></StackPanel>
+      <StackPanel Name="ManualName"><TextBlock Text="{DynamicResource Text.Name}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding ShowProfileNameError}"><TextBox Name="ProfileNameInput" Text="{Binding ProfileName}"/></Border></StackPanel>
       <TextBlock Name="ImportedName" IsVisible="False" Text="{Binding PackName}" FontWeight="SemiBold"/>
     </StackPanel>
     <StackPanel Name="CreateModeMenu" Grid.Row="1" Spacing="8" Width="140" IsVisible="{Binding IsCreatingProfile}">
@@ -32,7 +32,7 @@
           <CheckBox Content="{DynamicResource Text.Snapshots}" IsChecked="{Binding ShowSnapshots}" Click="FiltersChanged" Margin="0,0,14,0"/>
           <CheckBox Content="{DynamicResource Text.HistoricalVersions}" IsChecked="{Binding ShowHistorical}" Click="FiltersChanged"/>
         </WrapPanel>
-        <Border Classes="requiredField" Classes.missing="{Binding MissingProfileMinecraft}">
+        <Border Classes="requiredField" Classes.missing="{Binding ShowProfileMinecraftError}">
           <Panel Height="190">
             <ListBox Name="MinecraftVersionList" ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" AutomationProperties.Name="{DynamicResource Text.Version}" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
               <ListBox.Styles>
@@ -55,12 +55,12 @@
       </StackPanel>
       <Grid ColumnDefinitions="*,100" ColumnSpacing="12">
         <StackPanel><TextBlock Text="{DynamicResource Text.Loader}" Classes="label"/><ComboBox ItemsSource="{Binding Loaders}" SelectedItem="{Binding Loader}" HorizontalAlignment="Stretch"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Converter={StaticResource LoaderLabel}}" TextWrapping="Wrap"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
-        <StackPanel Grid.Column="1"><TextBlock Text="{DynamicResource Text.Memory}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding MissingProfileMemory}"><TextBox Text="{Binding Memory}"/></Border></StackPanel>
+        <StackPanel Grid.Column="1"><TextBlock Text="{DynamicResource Text.Memory}" Classes="label"/><Border Classes="requiredField" Classes.missing="{Binding ShowProfileMemoryError}"><TextBox Name="ProfileMemoryInput" Text="{Binding Memory}"/></Border></StackPanel>
       </Grid>
       <StackPanel IsVisible="{Binding HasEditorLoader}" Spacing="6">
         <TextBlock Text="{DynamicResource Text.LoaderVersion}" Classes="label"/>
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-          <Border Classes="requiredField" Classes.missing="{Binding MissingProfileLoaderVersion}">
+          <Border Classes="requiredField" Classes.missing="{Binding ShowProfileLoaderError}">
             <ComboBox Name="ProfileLoaderVersionList" ItemsSource="{Binding EditorLoaderOptions}" SelectedItem="{Binding SelectedEditorLoaderOption, Mode=TwoWay}" PlaceholderText="{DynamicResource Text.LoaderVersionPrompt}" AutomationProperties.Name="{DynamicResource Text.LoaderVersion}" HorizontalAlignment="Stretch" MaxDropDownHeight="240" IsEnabled="{Binding IsIdle}"/>
           </Border>
           <Button Name="RefreshProfileLoaderVersions" Grid.Column="1" Content="{DynamicResource Text.RefreshCatalog}" Click="LoadLoaderVersions">
@@ -79,10 +79,10 @@
         <ProgressBar Minimum="0" Maximum="100" Value="{Binding DownloadProgressValue}" IsIndeterminate="{Binding DownloadIndeterminate}"/>
       </StackPanel>
       <TextBlock Name="ImportStatus" IsVisible="False" Text="{Binding Status}" TextWrapping="Wrap" Classes="secondary"/>
-      <Panel Name="ManualHint"><TextBlock Name="MissingProfileFieldsHint" IsVisible="{Binding !ProfileFieldsComplete}" Text="{Binding MissingProfileFieldsText}" TextWrapping="Wrap"/></Panel>
+      <Panel Name="ManualHint"><TextBlock Name="MissingProfileFieldsHint" IsVisible="{Binding ShowProfileValidation}" Text="{Binding MissingProfileFieldsText}" TextWrapping="Wrap"/></Panel>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
         <Button Content="{DynamicResource Text.Cancel}" Click="Cancel"/>
-        <Button Name="SaveProfileButton" Content="{DynamicResource Text.Save}" Classes="primary" Click="Save"><Button.IsEnabled><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="IsIdle"/><Binding Path="ProfileFieldsComplete"/></MultiBinding></Button.IsEnabled></Button>
+        <Button Name="SaveProfileButton" Content="{DynamicResource Text.Save}" Classes="primary" Click="Save" IsEnabled="{Binding IsIdle}"/>
       </StackPanel>
     </StackPanel>
   </Grid>

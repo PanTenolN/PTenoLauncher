@@ -5,12 +5,13 @@
       <Panel Name="SearchStep">
         <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="12" Margin="0,8,0,0">
           <Border Classes="card" Padding="10" VerticalAlignment="Top"><TextBlock Text="Modrinth"/></Border>
-          <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="8">
+            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" RowSpacing="8">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
               <TextBox Name="CatalogQuery" Text="{Binding RemoteQuery}" MaxLength="200" PlaceholderText="{DynamicResource Text.ModrinthQuery}" KeyDown="SearchKeyDown" TextChanged="CatalogQueryChanged"/>
-              <Button Grid.Column="1" Name="CatalogSearch" Click="Search" Content="{DynamicResource Text.Search}" IsEnabled="{Binding CanUseOnlineCatalog}"/>
+              <Button Grid.Column="1" Name="CatalogSearch" Click="Search" Content="{DynamicResource Text.Search}" IsEnabled="{Binding !Offline}"/>
             </Grid>
-            <ListBox Grid.Row="1" Name="CatalogResults" ItemsSource="{Binding RemoteSearchResults}" SelectedItem="{Binding SelectedRemoteProject}" DoubleTapped="AddDoubleTapped">
+            <TextBlock Grid.Row="1" Text="{Binding CatalogSearchStatus}" TextWrapping="Wrap"/>
+            <ListBox Grid.Row="2" Name="CatalogResults" ItemsSource="{Binding RemoteSearchResults}" SelectedItem="{Binding SelectedRemoteProject}" DoubleTapped="AddDoubleTapped">
               <ListBox.ItemTemplate><DataTemplate>
                 <Grid ColumnDefinitions="28,*" ColumnSpacing="8">
                   <Border Width="28" Height="28" CornerRadius="4" Background="{DynamicResource SidebarBrush}">
@@ -29,9 +30,12 @@
             <TextBlock Text="{Binding SelectedRemoteProject.Description}" TextWrapping="Wrap"/>
             <Button Name="CatalogProjectPage" Content="{DynamicResource Text.CatalogProjectPage}" Click="OpenProject" IsVisible="{Binding HasRemoteProject}" IsEnabled="{Binding CanUseOnlineCatalog}"/>
             <Button Name="CatalogVersions" Content="{DynamicResource Text.TryAgain}" Click="Versions" IsVisible="False" IsEnabled="{Binding CanUseOnlineCatalog}"/>
-            <ComboBox ItemsSource="{Binding RemoteVersions}" SelectedItem="{Binding SelectedRemoteVersion}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
+            <ComboBox Name="CatalogVersionList" ItemsSource="{Binding RemoteVersions}" SelectedItem="{Binding SelectedRemoteVersion}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
             <TextBlock Text="{Binding CatalogVersionDetails}" TextWrapping="Wrap"/>
-            <Button Name="CatalogAdd" Content="{DynamicResource Text.CatalogAdd}" Click="Add" IsEnabled="{Binding CanAddCatalogVersion}" Classes="primary"/>
+            <WrapPanel>
+              <Button Name="CatalogAdd" Content="{Binding CatalogAddLabel}" Click="Add" IsEnabled="{Binding CanAddCatalogVersion}" Classes="primary" Margin="0,0,8,0"/>
+              <Button Name="CatalogRemoveSelected" Content="{DynamicResource Text.CartRemove}" Click="RemoveSelected" IsVisible="{Binding CatalogVersionQueued}" IsEnabled="{Binding IsIdle}"/>
+            </WrapPanel>
           </StackPanel></ScrollViewer>
         </Grid>
       </Panel>
@@ -41,6 +45,13 @@
               <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource Text.Cart}" FontSize="17" FontWeight="SemiBold"/><Button Grid.Column="1" Name="ResolveModCartButton" Content="{DynamicResource Text.ResolveCart}" Click="ResolveModCart" IsEnabled="{Binding IsIdle}"/></Grid>
               <TextBlock Text="{Binding CartTarget}" FontWeight="SemiBold" TextWrapping="Wrap"/>
               <TextBlock Text="{Binding CartNextStep}" TextWrapping="Wrap"/>
+              <TextBlock Text="{Binding CartDependencyFindings}" TextWrapping="Wrap"/>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding HasCartMissingRequirements}" IsEnabled="{Binding IsIdle}">
+                <ComboBox Name="CartMissingProvider" ItemsSource="{Binding CartMissingRequirements}" HorizontalAlignment="Stretch" SelectedIndex="0">
+                  <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Grid.Column="1" Click="FindManualProvider" Content="{DynamicResource Text.Search}"/>
+              </Grid>
               <TextBlock Name="CartConflict" IsVisible="{Binding HasCartConflict}" Text="{Binding CartConflict}" TextWrapping="Wrap" FontWeight="SemiBold"/>
               <ItemsControl ItemsSource="{Binding CatalogPicks}" IsEnabled="{Binding IsIdle}">
                 <ItemsControl.ItemTemplate><DataTemplate>
@@ -63,6 +74,7 @@
                 <ItemsControl.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Title}" FontWeight="SemiBold"/><TextBlock Text="{Binding Version.File.Name}" TextWrapping="Wrap"/><TextBlock Text="{Binding Reason}" TextWrapping="Wrap" Classes="secondary"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
               </ItemsControl>
               <Expander Name="CartReviewDetails" Classes="compact" Focusable="False" Header="{DynamicResource Text.CartTechnical}"><TextBlock Text="{Binding RemoteSummary}" TextWrapping="Wrap" FontSize="12"/></Expander>
+              <Button IsVisible="{Binding HasLocalMods}" Content="{DynamicResource Text.CartAddLocalDependency}" Click="AddLocalDependency" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
               <TextBlock IsVisible="{Binding ManualLocalOnly}" Text="{DynamicResource Text.ManualModWarning}" TextWrapping="Wrap"/>
               <Button IsVisible="{Binding HasLocalMods}" Content="{DynamicResource Text.LocalManualOnly}" Click="ManualOnly" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Left"/>
               <StackPanel IsVisible="{Binding HasOptionalSection}" IsEnabled="{Binding IsIdle}" Spacing="10">

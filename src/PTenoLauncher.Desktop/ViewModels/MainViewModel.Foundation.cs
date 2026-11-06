@@ -4,7 +4,7 @@ using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Desktop.ViewModels;
-public enum LauncherPage { Home, Profiles, Mods, Modpacks, Downloads, Servers, Settings, ProfileWorkspace }
+public enum LauncherPage { Home, Profiles, Modpacks, Downloads, Servers, Settings, ProfileWorkspace }
 public sealed partial class MainViewModel
 {
     internal LauncherServices Services => services;
@@ -20,24 +20,36 @@ public sealed partial class MainViewModel
                 if (!CanLeaveWorkspace) return;
                 WorkspaceProfileId = null;
             }
-            if (value == LauncherPage.Mods && !CanManageMods) value = LauncherPage.Home;
             if (!Set(ref page, value)) return;
             RefreshWorkspaceView();
-            foreach (var name in new[] { nameof(IsHome), nameof(IsProfiles), nameof(IsMods), nameof(IsModpacks), nameof(IsDownloads), nameof(IsServers), nameof(IsSettings), nameof(PageTitle) }) Changed(name);
+            foreach (var name in new[] { nameof(IsHome), nameof(IsProfiles), nameof(IsModpacks), nameof(IsDownloads), nameof(IsServers), nameof(IsSettings), nameof(PageTitle) }) Changed(name);
         }
     }
     public bool IsHome => Page == LauncherPage.Home;
     public string PreviewVersion => PTenoLauncher.Infrastructure.Updates.LauncherBuild.Current.Version + " · Development Preview";
     public bool IsProfiles => Page == LauncherPage.Profiles;
     public bool CanManageMods => SelectedProfile is { Loader: not ModLoader.Vanilla };
-    public bool IsMods => CanManageMods && (Page == LauncherPage.Mods || WorkspaceMods);
     public bool IsModpacks => Page == LauncherPage.Modpacks;
     public bool IsDownloads => Page == LauncherPage.Downloads;
     public bool IsServers => Page == LauncherPage.Servers;
     public bool IsSettings => Page == LauncherPage.Settings;
     public string PageTitle => IsProfileWorkspace ? ActiveName : TextCatalog.Get(IsDownloads ? "DownloadHistory" : Page.ToString());
     public bool HasProfile => SelectedProfile is not null;
-    public bool NoProfile => !HasProfile;
+    public bool NoProfile => !HasProfile && !DataLoadFailed;
+    private bool dataLoadFailed;
+    public bool DataLoadFailed
+    {
+        get => dataLoadFailed;
+        private set
+        {
+            if (Set(ref dataLoadFailed, value))
+            {
+                Changed(nameof(NoProfile));
+                Changed(nameof(ShowSignIn));
+            }
+        }
+    }
+    public bool ShowSignIn => !DataLoadFailed && NeedsSignIn;
     public string ActiveName => SelectedProfile?.Name ?? "";
     public string ActiveVersion => SelectedProfile?.Summary ?? "";
     public bool HomeHasInstallation => SelectedProfile is { } profile && File.Exists(services.Paths.Receipt(profile.Id));
@@ -56,6 +68,8 @@ public sealed partial class MainViewModel
         get
         {
             if (SelectedProfile is null) return "";
+            if (workspaceCache.TryGetValue(new(SelectedProfile.Id, ProfileSection.Mods), out var entry) && entry.Snapshot is { } snapshot)
+                return TextCatalog.Format("ModCount", snapshot.Mods.Count(row => row.File.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)));
             try { return TextCatalog.Format("ModCount", Directory.EnumerateFiles(Path.Combine(services.Paths.Game(SelectedProfile.Id), "mods"), "*.jar").Count()); }
             catch (IOException) { return "mods: ?"; }
         }
@@ -95,10 +109,8 @@ public sealed partial class MainViewModel
     private void SelectionChanged()
     {
         RefreshHomeAction();
-        Changed(nameof(CanManageMods)); Changed(nameof(IsMods)); Changed(nameof(IsGlobalMods)); Changed(nameof(CanUseOnlineCatalog)); Changed(nameof(IsFabricProfile)); Changed(nameof(IsQuiltProfile));
+        Changed(nameof(CanManageMods)); Changed(nameof(WorkspaceModTableVisible)); Changed(nameof(CanUseOnlineCatalog)); Changed(nameof(IsFabricProfile)); Changed(nameof(IsQuiltProfile));
         Changed(nameof(IsForgeProfile)); Changed(nameof(CanInstallGame)); Changed(nameof(ForgeHint));
-        if (!CanManageMods && Page == LauncherPage.Mods) Page = LauncherPage.Home;
-        RefreshWorkspaceMods();
         NotifyProfileJava();
         foreach (var name in new[] { nameof(HasProfile), nameof(NoProfile), nameof(ActiveName), nameof(ActiveVersion), nameof(ActiveIcon), nameof(ActiveMods), nameof(WorkspaceVersion), nameof(PageTitle) }) Changed(name);
     }
@@ -226,7 +238,7 @@ public sealed partial class MainViewModel
     public string AccountUuid
     {
         get => accountUuid;
-        private set { if (Set(ref accountUuid, value)) { Changed(nameof(HasAccount)); Changed(nameof(NeedsSignIn)); } }
+        private set { if (Set(ref accountUuid, value)) { Changed(nameof(HasAccount)); Changed(nameof(NeedsSignIn)); Changed(nameof(ShowSignIn)); } }
     }
     public bool HasAccount => !string.IsNullOrWhiteSpace(AccountUuid);
     public bool NeedsSignIn => !HasAccount;

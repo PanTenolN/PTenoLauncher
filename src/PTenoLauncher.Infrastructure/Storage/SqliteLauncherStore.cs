@@ -9,11 +9,20 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
     {
         SafePath.RejectLinks(paths.Database);
         var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = paths.Database, ForeignKeys = true, DefaultTimeout = 10 }.ToString());
-        db.Open();
-        using var cmd = db.CreateCommand();
-        cmd.CommandText = "PRAGMA synchronous=FULL;";
-        cmd.ExecuteNonQuery();
-        return db;
+        try
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "PRAGMA synchronous=FULL;";
+            cmd.ExecuteNonQuery();
+            return db;
+        }
+        catch
+        {
+            SqliteConnection.ClearPool(db);
+            db.Dispose();
+            throw;
+        }
     }
     public Task InitializeAsync(CancellationToken ct = default) => Task.Run(() =>
     {
@@ -57,10 +66,14 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
     }, ct);
     public Task SaveProfileAsync(GameProfile profile, CancellationToken ct = default) => Task.Run(() =>
     {
-        ProfileRules.Validate(profile);
         using var lease = new ProfileUsage(paths).Acquire(profile.Id);
+        SaveProfileUnderLease(profile, ct);
+    }, ct);
+
+    internal void SaveProfileUnderLease(GameProfile profile, CancellationToken ct)
+    {
+        ProfileRules.Validate(profile);
         using var db = Open(); using var tx = db.BeginTransaction(); using var cmd = db.CreateCommand();
-        paths.CreateProfile(profile);
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO profiles VALUES($id,$name,$version,$loader,$memory,$java,$created,$archived)
@@ -79,8 +92,17 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
         cmd.Parameters.AddWithValue("$created", profile.CreatedAt.ToString("O"));
         cmd.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
         cmd.Parameters.AddWithValue("$archived", profile.Archived);
-        cmd.ExecuteNonQuery(); tx.Commit();
-    }, ct);
+        cmd.ExecuteNonQuery();
+        ct.ThrowIfCancellationRequested();
+        var created = paths.EnsureProfileDirectory(profile);
+        try { tx.Commit(); }
+        catch
+        {
+            tx.Rollback();
+            if (created is not null) paths.RemoveEmptyCreatedProfile(profile.Id, created);
+            throw;
+        }
+    }
     public Task<string?> GetSettingAsync(string key, CancellationToken ct = default) => Task.Run(() =>
     {
         using var db = Open(); using var cmd = db.CreateCommand();

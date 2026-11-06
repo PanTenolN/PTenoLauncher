@@ -1,6 +1,6 @@
-# PTenoLauncher 0.2.1 Development Preview
+# PTenoLauncher 0.2.2 Development Preview
 
-See docs/PREVIEW_RELEASE.md for the changes, supported archive formats and release checks.
+See docs/PREVIEW_RELEASE.md for the changes, launch instructions and release checks.
 
 # 0.2.0 — Development Preview
 

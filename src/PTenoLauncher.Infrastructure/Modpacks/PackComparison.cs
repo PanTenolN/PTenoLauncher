@@ -6,7 +6,10 @@ using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Infrastructure.Modpacks;
 
-public sealed record ComparedPackFile(string Path, string Sha512, string Source, string? Project, string? VersionId, string? Version);
+public sealed record ComparedPackFile(string Path, string Sha512, string Source, string? Project, string? VersionId, string? Version)
+{
+    internal MrpackFile? Payload { get; init; }
+}
 public sealed record ComparedPack(string Name, string Minecraft, ModLoader Loader, string? LoaderVersion, IReadOnlyList<ComparedPackFile> Files);
 public sealed record PackDifference(string Kind, ComparedPackFile? Left, ComparedPackFile? Right);
 public sealed record PackComparisonResult(ComparedPack Left, ComparedPack Right, IReadOnlyList<PackDifference> Files)
@@ -21,8 +24,13 @@ public sealed class PackComparison(LauncherPaths paths)
 
     public async Task<PackComparisonResult> CompareAsync(string leftFile, string rightFile, CancellationToken ct = default)
     {
-        var left = await InspectAsync(leftFile, ct);
-        var right = await InspectAsync(rightFile, ct);
+        var left = (await InspectAsync(reader, leftFile, ct)).Pack;
+        var right = (await InspectAsync(reader, rightFile, ct)).Pack;
+        return Compare(left, right, ct);
+    }
+
+    internal static PackComparisonResult Compare(ComparedPack left, ComparedPack right, CancellationToken ct)
+    {
         var available = right.Files.ToList();
         var differences = new List<PackDifference>();
         foreach (var a in left.Files)
@@ -44,7 +52,7 @@ public sealed class PackComparison(LauncherPaths paths)
         return new(left, right, differences);
     }
 
-    private async Task<ComparedPack> InspectAsync(string file, CancellationToken ct)
+    internal static async Task<(ComparedPack Pack, MrpackPreview Source)> InspectAsync(MrpackReader reader, string file, CancellationToken ct)
     {
         file = Path.GetFullPath(file);
         SafePath.RejectLinks(file);
@@ -63,7 +71,8 @@ public sealed class PackComparison(LauncherPaths paths)
                 client.GetString() == "optional" && item.TryGetProperty("path", out var path) &&
                 path.ValueKind == System.Text.Json.JsonValueKind.String).Select(item => item.GetProperty("path").GetString()!).ToArray() : [];
         var pack = await reader.PreviewAsync(file, optional: optional, ct: ct);
-        if (!pack.CanImport) throw new MrpackException(pack.Blockers[0].Code, pack.Blockers[0].Detail);
+        var blocker = pack.Blockers.FirstOrDefault(p => p.Code is not ("PackOrigin" or "PackOfflineMissing"));
+        if (blocker is not null) throw new MrpackException(blocker.Code, blocker.Detail);
         var metadata = PackExportIndex.ReadFiles(root).ToDictionary(item => item.Path, StringComparer.Ordinal);
         var files = new List<ComparedPackFile>();
         foreach (var item in pack.Files.Where(item => ZipPackReader.Eligible(item.Path)))
@@ -74,8 +83,7 @@ public sealed class PackComparison(LauncherPaths paths)
             if (hash is null)
             {
                 var entry = zip.GetEntry(item.Entry!) ?? throw new MrpackException("PackIntegrity", item.Path);
-                await using var input = entry.Open();
-                hash = Convert.ToHexStringLower(await SHA512.HashDataAsync(input, ct));
+                hash = await HashEntryAsync(entry, ct);
             }
             var project = descriptor?.ProjectId;
             var version = descriptor?.VersionId;
@@ -85,10 +93,27 @@ public sealed class PackComparison(LauncherPaths paths)
                 if (parts.Length == 6 && PackExporter.OfficialFile(url, parts[2], parts[4], Path.GetFileName(item.Path)))
                     (project, version) = (parts[2], parts[4]);
             }
-            files.Add(new(item.Path, hash, item.Download is null ? "PackCompareIncluded" : "PackCompareLinked", project, version, descriptor?.Version));
+            files.Add(new(item.Path, hash, item.Download is null ? "PackCompareIncluded" : "PackCompareLinked", project, version, descriptor?.Version) { Payload = item });
         }
         files.AddRange(metadata.Values.Where(item => item.Action == "Skip").Select(item =>
             new ComparedPackFile(item.Path, item.Sha512, "PackCompareManual", item.ProjectId, item.VersionId, item.Version)));
-        return new(pack.Name, pack.Minecraft, pack.Loader, pack.LoaderVersion, files.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToArray());
+        return (new(pack.Name, pack.Minecraft, pack.Loader, pack.LoaderVersion, files.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToArray()), pack);
+    }
+
+    private static async Task<string> HashEntryAsync(ZipArchiveEntry entry, CancellationToken ct)
+    {
+        if (entry.Length > MrpackReader.MaxArchiveBytes) throw new MrpackException("PackBudget", entry.FullName);
+        await using var input = entry.Open();
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA512);
+        var buffer = new byte[81920];
+        long size = 0;
+        int read;
+        while ((read = await input.ReadAsync(buffer, ct)) > 0)
+        {
+            if ((size += read) > entry.Length) throw new MrpackException("PackIntegrity", entry.FullName);
+            hash.AppendData(buffer, 0, read);
+        }
+        if (size != entry.Length) throw new MrpackException("PackIntegrity", entry.FullName);
+        return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 }

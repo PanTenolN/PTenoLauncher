@@ -1,18 +1,11 @@
-# PTenoLauncher 0.2.1 Development Preview
+# PTenoLauncher 0.2.2 Development Preview
 
 Created and developed with AI assistance (OpenAI Codex).
 
-- Profile resource packs and shaders can be added from ZIP files. The Modrinth catalog filters by Minecraft version and content type, then verifies the selected ZIP before adding it to the profile. Worlds can be copied or moved to the launcher trash, with an optional backup.
-- Creating a profile starts Java x64 preparation. The launcher uses verified existing or cached Java where available. The profile survives an interrupted or unavailable download and offers a retry.
-- The Minecraft console renders Log4j messages and exception traces, colors levels, filters warnings and errors, and supports copying the saved transcript. The saved transcript reports its 10 MiB limit. Its historical view is paginated.
-- Mod search supports debounced suggestions, exact-version cart selection and automatic compatible optional dependencies. New installations keep readable JAR names and record file hashes and origin.
-- New profile folders retain a stable ID. Existing GUID-only folders still open. The move action previews both paths and supports moving back to the legacy path. It blocks when there are path-bound translation data, Java or pending transactions.
-- Two .mrpack archives can be compared read-only for Minecraft and loader versions, delivery method, file versions and SHA-512 hashes.
+- Installed mods always appear alphabetically by display name, including after search, refresh and installation. Download Mods keeps the installation cart, and local JAR imports open a review before installation.
+- Windows x64 Setup and Portable include .NET. Extract the entire Portable ZIP and double-click `PTenoLauncher.exe`. Portable uses `portable-data` next to the executable. The installed launcher continues to use `%LOCALAPPDATA%\PTenoLauncher`.
+- The launcher detects loss and recovery of internet access and switches automatically between offline and online operation. A catalog outage by itself does not switch the launcher offline.
+- Profile tabs reuse cached lists and update when files change, so switching tabs does not wait for another full scan.
+- Mark a verified game session as working to save the exact Minecraft and loader versions, mod hashes and enabled states. Preview the changes before confirming a restore. Verified local files allow offline restoration. Missing files require the exact matching bytes.
 
-The CurseForge catalog requires approved API access. Importing an existing CurseForge App profile remains a separate local action. Modrinth live testing depends on network availability. Comparison covers supported .mrpack client content. It does not synchronize the profiles. This preview is unsigned and is intended for manual download. A trusted automatic update feed is required for automatic delivery.
-
-Release packages are Windows x64 Setup, Portable and Source. Publication requires the Windows build, full regression suite, managed Java matrix, package checks and fresh Portable startup to pass for the same commit.
-
-### 0.2.1 local regression and packaging evidence
-
-Final local Windows regression on the release source: 990 passed, zero failed, and two junction scenarios reported as NotRunnable. Release compilation completed with zero warnings and errors. The local Setup compiled, and both ZIPs passed SHA-256 and CRC checks. A fresh Portable extraction initialized successfully in an isolated data root. Live Modrinth and an installer lifecycle test are separate from these results.
+Windows CI verifies the full suite, the managed Java matrix, package checksums and startup from a fresh extraction of the self-contained Portable ZIP. Licensed Minecraft gameplay and launching it offline with a real account remain manual checks. This unsigned development prerelease is available for manual download.

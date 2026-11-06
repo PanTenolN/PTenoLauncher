@@ -12,28 +12,39 @@ public sealed partial class ModUpdateManager
     private string BackupPath(Guid profile, Guid op) => SafePath.Join(paths.Backups, $"{profile:N}-mods-{op:N}.zip");
     private string Stage(ModUpdatePlan plan, string area, string relative) => SafePath.Join(OperationRoot(plan.ProfileId, plan.Id), area + "/" + relative);
     private static bool Same<T>(T a, T b) => JsonSerializer.Serialize(a, AtomicFile.JsonOptions) == JsonSerializer.Serialize(b, AtomicFile.JsonOptions);
-    private void ValidateState(Guid id, ModSetState s)
+    private void ValidateState(Guid id, ModSetState s, bool working = false, bool prior = false)
     {
         if (s.Profile.Id != id || s.Files.Count > 128 || s.Files.Sum(f => f.Size) > 8L * 1024 * 1024 * 1024 ||
             s.Files.Select(f => f.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != s.Files.Count) throw Error("UpdatesIntegrity");
         ProfileRules.Validate(s.Profile);
-        foreach (var f in s.Files) ValidateFile(f);
+        foreach (var f in s.Files) ValidateFile(f, working);
         if (s.Inventory is { } bytes)
         {
             var inventory = JsonSerializer.Deserialize<InstalledModInventory>(bytes, AtomicFile.JsonOptions) ?? throw Error("UpdatesIntegrity");
             new ModInventoryStore(paths).Validate(id, inventory);
             foreach (var f in inventory.Files)
-                if (!s.Files.Any(x => x.Path == f.RelativePath && x.Sha256.Equals(f.Sha256, StringComparison.OrdinalIgnoreCase) && x.Size == f.Size)) throw Error("UpdatesIntegrity");
+                if (!(working && prior) && !s.Files.Any(x => x.Path == f.RelativePath && x.Sha256.Equals(f.Sha256, StringComparison.OrdinalIgnoreCase) && x.Size == f.Size)) throw Error("UpdatesIntegrity");
         }
-        foreach (var pin in ReadPins(s).Pins) if (!s.Files.Contains(pin.File)) throw Error("UpdatesPinConflict", pin.File.Path);
+        foreach (var pin in ReadPins(s).Pins) if (!(working && prior) && !s.Files.Contains(pin.File)) throw Error("UpdatesPinConflict", pin.File.Path);
         if (s.Epoch is not null) _ = JsonSerializer.Deserialize<Guid>(s.Epoch, AtomicFile.JsonOptions);
     }
     private void ValidatePlan(GameProfile p, ModUpdatePlan plan)
     {
-        if (plan.ProfileId != p.Id || plan.Id == Guid.Empty || plan.Kind is not ("Update" or "Rollback") || plan.Before.Profile != p || plan.After.Profile != p ||
-            plan.Before.ContextHash != plan.After.ContextHash || plan.Changes.Count is 0 or > 256 || plan.Changes.Select(c => c.Before?.Path ?? c.After!.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plan.Changes.Count)
+        var working = plan.Kind == "Working";
+        if (plan.ProfileId != p.Id || plan.Id == Guid.Empty || plan.Kind is not ("Update" or "Rollback" or "Working") ||
+            (working ? p != plan.Before.Profile && p != plan.After.Profile : plan.Before.Profile != p || plan.After.Profile != p) ||
+            plan.Before.ContextHash != plan.After.ContextHash || (!working && plan.Changes.Count == 0) || plan.Changes.Count > 256 ||
+            plan.Changes.Any(c => c.Before is null && c.After is null) ||
+            plan.Changes.Select(c => c.Before?.Path ?? c.After!.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plan.Changes.Count)
             throw Error("UpdatesIntegrity");
-        ValidateState(p.Id, plan.Before); ValidateState(p.Id, plan.After);
+        ValidateState(p.Id, plan.Before, working, prior: true); ValidateState(p.Id, plan.After, working);
+        if (working)
+        {
+            var receipt = ParseWorkingReceipt(plan.After.Receipt);
+            if (WithWorkingTarget(plan.Before.Profile, receipt) != plan.After.Profile || plan.Reverts is null ||
+                Hash(plan.Before.Pins) != Hash(plan.After.Pins)) throw Error("UpdatesIntegrity");
+        }
+        else if (plan.Before.Receipt is not null || plan.After.Receipt is not null) throw Error("UpdatesIntegrity");
         var expected = plan.Before.Files.ToDictionary(f => f.Path, StringComparer.OrdinalIgnoreCase);
         foreach (var c in plan.Changes)
         {
@@ -138,9 +149,12 @@ public sealed partial class ModUpdateManager
         if (await FileState(temporary, f.Path, ct) != f) throw Error("UpdatesBackup", temporary);
         SafePath.RejectLinks(target); File.Move(temporary, target, false);
     }
-    private async Task WriteState(ModSetState s, ModSetState other, CancellationToken ct)
+    private async Task WriteState(ModSetState s, ModSetState other, CancellationToken ct, bool working = false)
     {
-        foreach (var (path, bytes, allowed) in new[] { (new ModInventoryStore(paths).PathFor(s.Profile.Id), s.Inventory, other.Inventory), (PinsPath(s.Profile.Id), s.Pins, other.Pins), (EpochPath(s.Profile.Id), s.Epoch, other.Epoch) })
+        var files = new List<(string, byte[]?, byte[]?)> { (new ModInventoryStore(paths).PathFor(s.Profile.Id), s.Inventory, other.Inventory),
+            (PinsPath(s.Profile.Id), s.Pins, other.Pins), (EpochPath(s.Profile.Id), s.Epoch, other.Epoch) };
+        if (working) files.Add((paths.Receipt(s.Profile.Id), s.Receipt, other.Receipt));
+        foreach (var (path, bytes, allowed) in files)
         {
             SafePath.RejectLinks(path);
             var current = Hash(await ReadBytes(path, ct));
@@ -149,19 +163,44 @@ public sealed partial class ModUpdateManager
             else await AtomicFile.WriteAsync(path, bytes, ct);
             Fault?.Invoke("metadata:" + Path.GetFileName(path));
         }
+        if (working && s.Profile != other.Profile)
+        {
+            var current = (await store.GetProfilesAsync(ct)).SingleOrDefault(p => p.Id == s.Profile.Id);
+            if (current != s.Profile && current != other.Profile) throw Error("UpdatesStale");
+            if (current != s.Profile) ((SqliteLauncherStore)store).SaveProfileUnderLease(s.Profile, ct);
+            Fault?.Invoke("working:profile");
+        }
     }
     public async Task ApplyAsync(GameProfile p, ModUpdatePlan plan, bool confirmed, CancellationToken ct = default)
     {
         if (!confirmed) throw Error("UpdatesConfirm");
         using var lease = new ProfileUsage(paths).Acquire(p.Id); new ProfileUsage(paths).CheckWorldLocks(p.Id); RequireNoPending(paths, p.Id);
         await ValidateSavedPlan(p, plan, ct);
-        if (!plan.CanApply || Fingerprint(await Capture(p, ct)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
+        var working = plan.Kind == "Working";
+        if (p != plan.Before.Profile || plan.Blockers.Count != 0 || (!working && !plan.CanApply) ||
+            Fingerprint(await Capture(p, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
+        if (working)
+        {
+            var snapshot = await ReadWorkingAsync(p.Id, ct);
+            if (snapshot is null || snapshot.Id != plan.Reverts || !Same(snapshot.Receipt, ParseWorkingReceipt(plan.After.Receipt)) ||
+                !snapshot.Mods.Select(mod => mod.File).SequenceEqual(plan.After.Files) ||
+                await QuiltOverridesHash(p.Id, ct) != snapshot.QuiltOverridesHash) throw Error("UpdatesStale");
+            var missing = await MissingWorkingGameFiles(p.Id, snapshot.Receipt, ct);
+            if (missing.Count != 0) throw Error("WorkingGameMissing", string.Join(Environment.NewLine, missing));
+        }
         ModUpdateOperation? original = null;
         if (plan.Kind == "Rollback") { original = await ReadOperation(p, plan.Reverts ?? throw Error("UpdatesIntegrity"), ct); await VerifyBackup(original, ct); }
         foreach (var c in plan.Changes.Where(c => c.After is not null))
         {
             var f = c.After!; var stage = Stage(plan, "new", f.Path);
             if (original is not null) await RestoreEntry(original, f, stage, ct);
+            else if (working)
+            {
+                var source = ExactLocalFile(plan.Before, f);
+                var file = source is null ? WorkingBlob(f) : SafePath.Join(paths.Game(p.Id), source.Path);
+                if (!File.Exists(file)) throw Error("WorkingExactUnavailable", f.Path);
+                await CopyVerified(file, stage, f, ct);
+            }
             else
             {
                 var v = c.Version ?? throw Error("UpdatesIntegrity");
@@ -174,12 +213,12 @@ public sealed partial class ModUpdateManager
             var blockers = new List<string>(); await ReviewResult(p, plan.Before, plan.After, plan.Changes, blockers, [], ct);
             if (blockers.Count > 0) throw Error("UpdatesCompatibility", string.Join(Environment.NewLine, blockers));
         }
-        if (Fingerprint(await Capture(p, ct)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
+        if (Fingerprint(await Capture(p, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
         var op = new ModUpdateOperation(plan, "Prepared", Path.GetRelativePath(paths.Root, BackupPath(p.Id, plan.Id)).Replace('\\', '/'), await CreateBackup(plan, ct));
         await VerifyBackup(op, ct);
         await store.RegisterArtifactAsync(new(p.Id, op.Backup, "backup"), ct);
-        if (Fingerprint(await Capture(p, ct)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
-        await AtomicFile.WriteJsonAsync(PendingPath(paths, p.Id), op, ct);
+        if (Fingerprint(await Capture(p, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
+        await AtomicFile.WriteJsonAsync(PendingPath(plan), op, ct);
         await AtomicFile.WriteJsonAsync(OperationPath(p.Id, plan.Id), op, ct);
         Fault?.Invoke("prepared");
         foreach (var c in plan.Changes)
@@ -202,13 +241,13 @@ public sealed partial class ModUpdateManager
                 Fault?.Invoke("new:" + next.Path);
             }
         }
-        await WriteState(plan.After, plan.Before, ct);
-        if (Fingerprint(await Capture(p, ct)) != Fingerprint(plan.After)) throw Error("UpdatesStale");
+        await WriteState(plan.After, plan.Before, ct, working);
+        if (Fingerprint(await Capture(plan.After.Profile, ct, working: working)) != Fingerprint(plan.After)) throw Error("UpdatesStale");
         op = op with { State = "Committed" };
-        await AtomicFile.WriteJsonAsync(PendingPath(paths, p.Id), op, ct);
+        await AtomicFile.WriteJsonAsync(PendingPath(plan), op, ct);
         await AtomicFile.WriteJsonAsync(OperationPath(p.Id, plan.Id), op, ct);
         Fault?.Invoke("committed");
-        File.Delete(PendingPath(paths, p.Id));
+        File.Delete(PendingPath(plan));
         await store.AddHistoryAsync(p.Id, "mods." + plan.Kind.ToLowerInvariant(), plan.Id.ToString("N"), CancellationToken.None);
     }
     public async Task<IReadOnlyList<ModUpdateHistory>> HistoryAsync(GameProfile p, CancellationToken ct = default)
@@ -219,7 +258,10 @@ public sealed partial class ModUpdateManager
         {
             SafePath.RejectLinks(dir);
             if (!Guid.TryParseExact(Path.GetFileName(dir), "N", out var id) || !File.Exists(OperationPath(p.Id, id))) continue;
-            var op = await ReadOperation(p, id, ct); result.Add(new(id, op.Plan.At, op.Plan.Kind, op.State, op.Backup));
+            var op = await AtomicFile.ReadJsonAsync<ModUpdateOperation>(OperationPath(p.Id, id), ct) ?? throw Error("UpdatesIntegrity");
+            if (op.Plan.ProfileId != p.Id || op.Plan.Id != id) throw Error("UpdatesIntegrity");
+            ValidateOperation(op.Plan.Before.Profile, op);
+            if (op.Plan.Kind != "Working" && op.Plan.Before.Profile == p) result.Add(new(id, op.Plan.At, op.Plan.Kind, op.State, op.Backup));
         }
         return result.OrderByDescending(x => x.At).ToArray();
     }
@@ -227,7 +269,7 @@ public sealed partial class ModUpdateManager
     {
         using var lease = new ProfileUsage(paths).Acquire(p.Id); new ProfileUsage(paths).CheckWorldLocks(p.Id); RequireNoPending(paths, p.Id);
         var op = await ReadOperation(p, operationId, ct);
-        if (op.State != "Committed") throw Error("UpdatesStale");
+        if (op.State != "Committed" || op.Plan.Kind == "Working") throw Error("UpdatesStale");
         var before = await Capture(p, ct);
         if (Fingerprint(before) != Fingerprint(op.Plan.After)) throw Error("UpdatesStale");
         await VerifyBackup(op, ct);
@@ -241,16 +283,22 @@ public sealed partial class ModUpdateManager
         if (!confirmed) throw Error("UpdatesConfirm");
         using var lease = new ProfileUsage(paths).Acquire(p.Id); new ProfileUsage(paths).CheckWorldLocks(p.Id);
         var op = await AtomicFile.ReadJsonAsync<ModUpdateOperation>(PendingPath(paths, p.Id), ct); if (op is null) return;
+        if (op.Plan.Kind == "Working") throw Error("UpdatesIntegrity");
+        await RecoverOperation(p, op, ct);
+    }
+    private async Task RecoverOperation(GameProfile p, ModUpdateOperation op, CancellationToken ct)
+    {
+        var working = op.Plan.Kind == "Working";
         ValidateOperation(p, op); await ValidateSavedPlan(p, op.Plan, ct); await VerifyBackup(op, ct);
-        var current = await Capture(p, ct, partial: true);
+        var current = await Capture(p, ct, partial: true, working: working);
         if (op.State == "Committed")
         {
             if (Fingerprint(current) != Fingerprint(op.Plan.After)) throw Error("UpdatesStale");
-            await AtomicFile.WriteJsonAsync(OperationPath(p.Id, op.Plan.Id), op, ct); File.Delete(PendingPath(paths, p.Id)); return;
+            await AtomicFile.WriteJsonAsync(OperationPath(p.Id, op.Plan.Id), op, ct); File.Delete(PendingPath(op.Plan)); return;
         }
         if (op.State != "Prepared") throw Error("UpdatesIntegrity");
         var plan = op.Plan;
-        if (current.ContextHash != plan.Before.ContextHash || new[] { (current.Inventory, plan.Before.Inventory, plan.After.Inventory), (current.Pins, plan.Before.Pins, plan.After.Pins), (current.Epoch, plan.Before.Epoch, plan.After.Epoch) }.Any(t => Hash(t.Item1) != Hash(t.Item2) && Hash(t.Item1) != Hash(t.Item3))) throw Error("UpdatesStale");
+        if (current.ContextHash != plan.Before.ContextHash || new[] { (current.Inventory, plan.Before.Inventory, plan.After.Inventory), (current.Pins, plan.Before.Pins, plan.After.Pins), (current.Epoch, plan.Before.Epoch, plan.After.Epoch), (current.Receipt, plan.Before.Receipt, plan.After.Receipt) }.Any(t => Hash(t.Item1) != Hash(t.Item2) && Hash(t.Item1) != Hash(t.Item3))) throw Error("UpdatesStale");
         var affected = plan.Changes.Select(c => c.Before?.Path ?? c.After!.Path).ToHashSet(StringComparer.Ordinal);
         foreach (var f in current.Files)
             if (!plan.Before.Files.Contains(f) && !plan.After.Files.Contains(f)) throw Error("UpdatesStale", f.Path);
@@ -274,9 +322,9 @@ public sealed partial class ModUpdateManager
             }
             if (c.Before is { } old) await RestoreEntry(op, old, target, ct);
         }
-        await WriteState(plan.Before, plan.After, ct);
-        if (Fingerprint(await Capture(p, ct)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
+        await WriteState(plan.Before, plan.After, ct, working);
+        if (Fingerprint(await Capture(plan.Before.Profile, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
         await AtomicFile.WriteJsonAsync(OperationPath(p.Id, plan.Id), op with { State = "Recovered" }, ct);
-        File.Delete(PendingPath(paths, p.Id));
+        File.Delete(PendingPath(op.Plan));
     }
 }

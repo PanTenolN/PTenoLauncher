@@ -4,6 +4,23 @@ public static partial class TextCatalog
 {
     private static void RegisterContentTexts()
     {
+        Texts["ContentCartHttpFailed"] = ("Сервер повернув HTTP {0}. Можна повторити.", "The server returned HTTP {0}. You can retry.");
+        Texts["ContentCartNetworkFailed"] = ("Не вдалося завантажити файл через мережу. Можна повторити.", "The file could not be downloaded. You can retry.");
+        Texts["ContentCartInstall"] = ("Встановити пакети", "Install packs");
+        Texts["ContentCartNoVersion"] = ("Для {0} немає сумісної версії.", "No compatible version for {0}.");
+        Texts["ContentCartResult"] = ("Встановлено {0}. Не вдалося встановити {1}.", "Installed {0}. Failed to install {1}.");
+        Texts["ContentCartFileFailed"] = ("Пакет не встановлено. Можна повторити.", "Pack installation failed. You can retry.");
+        Texts["ContentCartLimit"] = ("У кошику може бути до 64 пакетів.", "The cart holds up to 64 packs.");
+        Texts["ProfileNamesOrganize"] = ("Упорядкувати назви…", "Organize names…");
+        Texts["ProfileFolderRestore"] = ("Відновити попередню назву теки…", "Restore previous folder name…");
+        Texts["ProfileFileRestore"] = ("Відновити останню назву файла…", "Restore last file name…");
+        Texts["ProfileFolderNameAlready"] = ("Назва вже читабельна або попередньої назви немає.", "The name is already readable or has no previous name.");
+        Texts["ProfileNameSelectFile"] = ("Вибери один JAR або ZIP.", "Select one JAR or ZIP.");
+        Texts["ProfileNameChanged"] = ("Нова назва файла — {0}", "New file name — {0}");
+        Texts["ProfileNameNoUndo"] = ("Немає збереженого перейменування для відновлення.", "There is no saved rename to undo.");
+        Texts["ProfileNameUnverified"] = ("За хешем або метаданими не вдалося підтвердити безпечну нову назву.", "The hash or metadata could not verify a safe new name.");
+        Texts["ProfileNameReferenced"] = ("Стара назва використовується в налаштуваннях, записах імпорту, закріпленнях або історії оновлень. Файл залишено на місці.", "Settings, import records, pins or update history refer to the old name. The file stays in place.");
+        Texts["ProfileNameRecovery"] = ("Перейменування потребує відновлення. Перезапусти лаунчер.", "The rename needs recovery. Restart the launcher.");
         Texts["ContentResourcePacks"] = ("Ресурс-паки", "Resource packs");
         Texts["ContentShaders"] = ("Шейдери", "Shaders");
         Texts["ContentWorlds"] = ("Світи", "Worlds");

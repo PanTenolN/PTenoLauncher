@@ -82,7 +82,7 @@ public sealed partial class ProfileContent(LauncherPaths paths)
     }
 
     public async Task<ProfileContentEntry> ImportAsync(Guid profile, ProfileContentKind kind, string source, CancellationToken ct = default,
-        string? fileName = null, string? expectedSha512 = null)
+        string? fileName = null, string? expectedSha512 = null, string? catalogTitle = null)
     {
         if (kind == ProfileContentKind.Worlds) throw new ArgumentOutOfRangeException(nameof(kind));
         source = Path.GetFullPath(source);
@@ -94,9 +94,8 @@ public sealed partial class ProfileContent(LauncherPaths paths)
         using var lease = usage.Acquire(profile);
         usage.CheckWorldLocks(profile);
         var folder = Folder(profile, kind);
-        var destination = SafePath.Join(folder, fileName);
+        _ = SafePath.Join(folder, fileName);
         if (!Directory.Exists(paths.Game(profile))) throw new IOException("ContentMissing");
-        if (File.Exists(destination) || Directory.Exists(destination)) throw new IOException("ContentCollision");
         Directory.CreateDirectory(folder);
         var pending = SafePath.Join(folder, ".pteno-import-" + Guid.NewGuid().ToString("N") + ".part");
         var owned = false;
@@ -118,12 +117,23 @@ public sealed partial class ProfileContent(LauncherPaths paths)
                 if (!sha512.Equals(expectedSha512, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("ContentCatalogMismatch");
             }
-            var name = await ValidatePackAsync(pending, kind, ct) ?? Path.GetFileNameWithoutExtension(fileName);
+            var original = Path.GetFileNameWithoutExtension(fileName);
+            var title = await ValidatePackAsync(pending, kind, ct);
+            string? stripped = null;
+            if (ReadableName.LooksTechnical(original))
+            {
+                await using var staged = File.OpenRead(pending);
+                stripped = ReadableName.StripDigest(original, expectedSha512,
+                    Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(staged, ct)));
+            }
+            var stem = ReadableName.Stem(stripped ?? original, ReadableName.Stem(catalogTitle ?? title ?? "Pack", "Pack"), 120);
+            var destination = ReadableName.Free(folder, stem, ".zip");
+            var name = title ?? catalogTitle ?? stem;
             ct.ThrowIfCancellationRequested();
             SafePath.RejectLinks(destination);
             File.Move(pending, destination, false);
             owned = false;
-            return new(fileName, name, false);
+            return new(Path.GetFileName(destination), name, false);
         }
         finally
         {
@@ -131,7 +141,7 @@ public sealed partial class ProfileContent(LauncherPaths paths)
         }
     }
 
-    private async Task<string?> ValidatePackAsync(string file, ProfileContentKind kind, CancellationToken ct)
+    internal async Task<string?> ValidatePackAsync(string file, ProfileContentKind kind, CancellationToken ct)
     {
         try
         {

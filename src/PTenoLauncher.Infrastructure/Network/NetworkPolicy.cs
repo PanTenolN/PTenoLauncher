@@ -1,11 +1,29 @@
 namespace PTenoLauncher.Infrastructure.Network;
 
+internal sealed class NetworkOfflineException(string message) : InvalidOperationException(message);
+
 public sealed class NetworkPolicy
 {
-    public bool Offline { get; set; }
+    private const string OfflineMessage = "Увімкнено офлайн-режим. Для цієї дії потрібен інтернет.";
+    private volatile bool offline;
+    public bool Offline
+    {
+        get => offline;
+        set
+        {
+            if (offline == value) return;
+            offline = value;
+            if (value) WentOffline?.Invoke();
+        }
+    }
+    internal event Action? WentOffline;
     public void RequireOnline()
     {
-        if (Offline) throw new InvalidOperationException("Увімкнено офлайн-режим. Для цієї дії потрібен інтернет.");
+        if (Offline) throw new InvalidOperationException(OfflineMessage);
+    }
+    internal void RequireOnlineForLaunchAuthentication()
+    {
+        if (Offline) throw new NetworkOfflineException(OfflineMessage);
     }
     public static void ValidateDownloadUri(Uri uri)
     {

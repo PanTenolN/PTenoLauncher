@@ -18,15 +18,21 @@ internal static class PackExportIndex
     internal static bool Disclosed(PackExportItem item) => item.Action != PackExportAction.Skip ||
         item.Reason is "ExportUnknownSource" or "ExportUnknownLicense" or "ExportUnusableSource";
 
-    internal static byte[] Build(PackExportPlan plan)
+    internal static Dictionary<string, string> Dependencies(string minecraft, ModLoader target, string? loaderVersion)
     {
-        var dependencies = new Dictionary<string, string> { ["minecraft"] = plan.Minecraft };
-        var loader = plan.Loader switch
+        var dependencies = new Dictionary<string, string> { ["minecraft"] = minecraft };
+        var loader = target switch
         {
             ModLoader.Fabric => "fabric-loader", ModLoader.Quilt => "quilt-loader",
             ModLoader.Forge => "forge", ModLoader.NeoForge => "neoforge", _ => null
         };
-        if (loader is not null) dependencies.Add(loader, plan.LoaderVersion!);
+        if (loader is not null) dependencies.Add(loader, loaderVersion!);
+        return dependencies;
+    }
+
+    internal static byte[] Build(PackExportPlan plan)
+    {
+        var dependencies = Dependencies(plan.Minecraft, plan.Loader, plan.LoaderVersion);
         var links = plan.Items.Where(i => i.Action == PackExportAction.Link).Select(i => new
         {
             path = i.Path, fileSize = i.Size, hashes = new { sha1 = i.Sha1, sha512 = i.Sha512 },

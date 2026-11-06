@@ -124,6 +124,9 @@ public static partial class TextCatalog
         RegisterTranslationToolsTexts();
         RegisterMinecraftImportTexts();
         RegisterAiUsabilityTexts();
+        Texts.Add("NetworkLost", ("Інтернет зник. Лаунчер перейшов в офлайн-режим", "Internet connection lost. The launcher switched to offline mode."));
+        Texts.Add("WorkspaceRefresh", ("Оновити", "Refresh"));
+        RegisterWorkingTexts();
         LoadAdditionalLanguages();
     }
     public static string Format(string key, params object?[] args) => string.Format(CultureInfo.GetCultureInfo(Language == "en" ? "en-IE" : Language == "uk" ? "uk-UA" : Language), Get(key), args);

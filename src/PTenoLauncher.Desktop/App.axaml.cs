@@ -74,7 +74,7 @@ public sealed partial class App : Application
                     window.Close(); return;
                 }
 #endif
-                if (!Program.Arguments.Contains("--smoke-test") && !Program.Arguments.Contains("--skip-update-check")) _ = vm.CheckLauncherUpdatesAsync(automatic: !vm.LauncherRecoveryRequired);
+                if (!Program.Arguments.Contains("--smoke-test")) _ = MonitorConnectivityAsync(window, vm);
                 if (Program.Arguments.Contains("--smoke-test"))
                 {
                     if (Program.Arguments.Contains("--smoke-fabric"))
@@ -96,10 +96,18 @@ public sealed partial class App : Application
                         vm.SelectedRemoteVersion=version;
                         vm.QueueCatalogVersion(version, version.Name);
                         await vm.ResolveCartAsync();
-                        DispatcherTimer.RunOnce(()=>window.ModsScroll.Offset=new Vector(0,window.ModsScroll.Extent.Height),TimeSpan.FromMilliseconds(700));
                     }
                     var pageIndex = Array.IndexOf(Program.Arguments, "--smoke-page");
-                    if (pageIndex >= 0 && pageIndex + 1 < Program.Arguments.Length && Enum.TryParse<LauncherPage>(Program.Arguments[pageIndex + 1], out var page)) vm.Page = page;
+                    if (pageIndex >= 0 && pageIndex + 1 < Program.Arguments.Length)
+                    {
+                        var target = Program.Arguments[pageIndex + 1];
+                        if (target == nameof(ProfileSection.Mods) && vm.SelectedProfile is { } profile)
+                        {
+                            vm.OpenProfileWorkspace(profile.Id);
+                            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+                        }
+                        else if (Enum.TryParse<LauncherPage>(target, out var page)) vm.Page = page;
+                    }
                     var tabIndex = Array.IndexOf(Program.Arguments,"--smoke-settings-tab");
                     if(tabIndex >= 0 && tabIndex + 1 < Program.Arguments.Length && Program.Arguments[tabIndex+1] is "AiConnectionTab" or "AiAssistantTab" or "MyTranslationsTab")
                     {
@@ -127,5 +135,26 @@ public sealed partial class App : Application
             };
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static async Task MonitorConnectivityAsync(MainWindow window, MainViewModel vm)
+    {
+        using var lifetime = new CancellationTokenSource();
+        void Stop(object? sender, EventArgs args) => lifetime.Cancel();
+        window.Closed += Stop;
+        try
+        {
+            if (!vm.ManualOffline) await vm.RefreshConnectivityAsync(lifetime.Token);
+            if (!Program.Arguments.Contains("--skip-update-check"))
+                _ = vm.CheckLauncherUpdatesAsync(automatic: !vm.LauncherRecoveryRequired);
+            while (!lifetime.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(vm.Offline ? 6 : 15), lifetime.Token);
+                if (!vm.ManualOffline) await vm.RefreshConnectivityAsync(lifetime.Token);
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) { vm.Services.Log.Error("network.connectivity", error); }
+        finally { window.Closed -= Stop; }
     }
 }

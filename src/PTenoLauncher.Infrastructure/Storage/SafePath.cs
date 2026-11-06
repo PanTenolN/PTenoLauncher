@@ -17,7 +17,7 @@ public static class SafePath
         RejectLinks(full);
         return full;
     }
-    private static bool IsDevice(string s)
+    internal static bool IsDevice(string s)
     {
         var stem = s.Split('.')[0].ToUpperInvariant();
         return stem is "CON" or "PRN" or "AUX" or "NUL" ||

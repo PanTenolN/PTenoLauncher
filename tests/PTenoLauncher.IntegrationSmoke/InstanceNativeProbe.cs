@@ -28,8 +28,8 @@ public static class InstanceNativeProbe
             if (receipt?.LoaderVersion != "0.16.10" || !File.ReadAllBytes(SafePath.Join(paths.Game(imported.Profile.Id), "config/example.txt")).AsSpan().SequenceEqual(data) ||
                 !File.ReadAllBytes(SafePath.Join(source, ".minecraft/config/example.txt")).AsSpan().SequenceEqual(data) || File.Exists(paths.Receipt(imported.Profile.Id))) throw new IOException("Synthetic import proof failed.");
             SqliteConnection.ClearAllPools();
-            var dotnet = Path.Combine(OwnedTestRoot.ProjectRoot, ".tools/dotnet/dotnet.exe");
-            var app = Path.Combine(OwnedTestRoot.ProjectRoot, localApp
+            var dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? Path.Combine(OwnedTestRoot.ProjectRoot, ".tools/dotnet/dotnet.exe");
+            var app = OwnedTestRoot.BuildArtifact("PTenoLauncher.Desktop", "PTenoLauncher", localApp
                 ? "src/PTenoLauncher.Desktop/bin/UiContinuation/PTenoLauncher.dll"
                 : "src/PTenoLauncher.Desktop/bin/Release/net10.0/PTenoLauncher.dll");
             var start = new ProcessStartInfo(dotnet) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = owned.Root };

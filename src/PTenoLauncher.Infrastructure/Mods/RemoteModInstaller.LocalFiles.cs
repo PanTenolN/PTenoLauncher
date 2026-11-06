@@ -8,7 +8,7 @@ namespace PTenoLauncher.Infrastructure.Mods;
 public sealed record LocalModSelection(ModCartItem Item, string Sha512, CatalogModVersion? Identity);
 public sealed record LocalDependencyPlan(RemoteInstallPlan Remote, IReadOnlyList<LocalModSelection> LocalFiles,
     IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings, bool ManualOnly = false,
-    IReadOnlyList<ModIdentityConflict>? Conflicts = null)
+    IReadOnlyList<ModIdentityConflict>? Conflicts = null, IReadOnlyList<ModRequirement>? MissingRequirements = null)
 {
     public bool CanInstall => Blockers.Count == 0 && Remote.Resolution.Blockers.Count == 0 &&
         (LocalFiles.Count > 0 || Remote.Resolution.Entries.Count > 0);
@@ -93,7 +93,15 @@ public sealed partial class RemoteModInstaller
         var pending = selected.Where(s => !entries.Any(e => e.AlreadyInstalled && e.Version.File.Sha512 == s.Sha512))
             .Select(s => s.Item with { Inspection = s.Item.Inspection with { SourceStatus = s.Identity is null ? "Unknown Source" : "Local file / Modrinth SHA512" } }).ToArray();
         var review = await local.ReviewAsync(profile, pending, ct);
-        if (entries.Any(e => !e.AlreadyInstalled && !e.FromLocalFile))
+        if (!manualOnly && profile.Loader == ModLoader.Fabric && selected.Any(s => s.Identity is null && s.Item.Inspection.FabricMetadata is not null) &&
+            review.Details.Any(b => b.Requirement is not null) && !review.Details.Any(b => b.Kind == ModBlockerKind.Definite))
+        {
+            (resolution, review) = await ResolveFabricProvidersAsync(profile, pending, snapshot, resolution, roots,
+                new(catalog, identities), optionalSelections ?? [], automaticOptional, hashes, blockers, ct);
+            entries = resolution.Entries.Select(e => e with { FromLocalFile = hashes.Contains(e.Version.File.Sha512) }).ToArray();
+            blockers.AddRange(review.Blockers);
+        }
+        else if (entries.Any(e => !e.AlreadyInstalled && !e.FromLocalFile))
         {
             warnings.Add("Після завантаження залежностей у кеш усі фактичні JAR перевіряються разом до зміни профілю. Каталог не містить усіх внутрішніх Mod ID.");
             blockers.AddRange(review.Details.Where(b => b.Kind == ModBlockerKind.Definite).Select(b => b.Message));
@@ -109,7 +117,9 @@ public sealed partial class RemoteModInstaller
         resolution = resolution with { Entries = entries };
         var remote = new RemoteInstallPlan(profile.Id, profile.MinecraftVersion, profile.Loader, snapshot.Fingerprint, resolution, catalog.UsedCache);
         return new(remote, selected, blockers.Distinct().ToArray(), warnings.Distinct().ToArray(), manualOnly,
-            review.Details.Select(b => b.Conflict).OfType<ModIdentityConflict>().ToArray());
+            review.Details.Select(b => b.Conflict).OfType<ModIdentityConflict>().ToArray(),
+            review.Details.Select(b => b.Requirement).OfType<ModRequirement>()
+                .DistinctBy(r => (r.Id, string.Join(" || ", r.Alternatives))).ToArray());
     }
     public async Task InstallLocalAsync(GameProfile profile, LocalDependencyPlan plan, bool confirmed, bool unknownAccepted,
         IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
@@ -134,11 +144,7 @@ public sealed partial class RemoteModInstaller
         }
         foreach (var entry in plan.Downloads)
         {
-            var file = entry.Version.File;
-            var destination = SafePath.Join(paths.Cache, "modrinth/files/" + file.Sha512 + "/" + file.Name);
-            await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
-            var inspected = await local.InspectAsync(destination, ct);
-            cart.Add(new(destination, inspected with { SourceStatus = "Modrinth" }, entry.Reason, entry.Title));
+            cart.Add(await PrepareCatalogJarAsync(entry.Version, entry.Reason, entry.Title, progress, ct));
         }
         if ((await ScanAsync(profile, false, ct)).Fingerprint != plan.Remote.InstalledFingerprint)
             throw new InvalidOperationException("Встановлені моди змінилися під час завантаження. Повторіть розрахунок.");

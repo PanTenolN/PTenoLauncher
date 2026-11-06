@@ -12,13 +12,14 @@ if (args.FirstOrDefault() is "--instance-native" or "--local-app-native") { try 
 if (args.Length == 2 && args[0] == "--owned-cleanup")
 {
     try {
-    var ownedRoot=Path.GetFullPath(args[1]);var parent=Path.Combine(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,".local","test-runs");
+    var ownedRoot=Path.GetFullPath(args[1]);var parent=PTenoLauncher.Testing.OwnedTestRoot.PayloadBase;
     if(Directory.GetParent(ownedRoot)?.FullName!=parent)throw new IOException("Not an explicit owned operation root.");
     SafePath.RejectLinks(ownedRoot);
+    var evidence = PTenoLauncher.Testing.OwnedTestRoot.EvidenceFor(Path.GetFileName(ownedRoot));
     var marker=await AtomicFile.ReadJsonAsync<PTenoLauncher.Testing.OwnedTestRoot.Marker>(SafePath.Join(ownedRoot,"owned-test-root.json"))
-        ?? await AtomicFile.ReadJsonAsync<PTenoLauncher.Testing.OwnedTestRoot.Marker>(SafePath.Join(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,"artifacts/test-lifecycle/"+Path.GetFileName(ownedRoot)+"/owned-test-root.json"))
+        ?? await AtomicFile.ReadJsonAsync<PTenoLauncher.Testing.OwnedTestRoot.Marker>(SafePath.Join(evidence,"owned-test-root.json"))
         ?? throw new IOException("Missing owned manifest.");
-    PTenoLauncher.Testing.OwnedTestRoot.CleanupOwned(marker,SafePath.Join(PTenoLauncher.Testing.OwnedTestRoot.ProjectRoot,"artifacts/test-lifecycle/"+marker.Id));
+    PTenoLauncher.Testing.OwnedTestRoot.CleanupOwned(marker,evidence);
     }catch(Exception error){Console.Error.WriteLine(error);Environment.ExitCode=1;}return;
 }
 // Opt-in live network checks, never run by the unit test suite; no authentication or game execution.

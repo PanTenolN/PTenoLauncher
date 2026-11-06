@@ -131,15 +131,16 @@ public sealed class ProfileVersionPickerUiTests
             main.Show();
             try
             {
-                vm.Page = LauncherPage.Settings;
-                var tabs = main.FindControl<TabControl>("SettingsTabs")!;
-                tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(t => t.Name == "ProfileSettingsTab");
-                var catalog = main.FindControl<Button>("SettingsModsCatalogButton")!;
-                Assert.True(catalog.IsVisible);
-                catalog.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(LauncherPage.Mods, vm.Page);
                 vm.Page = LauncherPage.Profiles;
                 Assert.True(main.FindControl<Button>("ProfilesFolderButton")!.IsVisible);
+                main.FindControl<Button>("ProfilesEditButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(LauncherPage.ProfileWorkspace, vm.Page);
+                Assert.Equal(saved.Id, vm.WorkspaceProfileId);
+                main.FindControl<Button>("ProfileModsSection")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(ProfileSection.Mods, vm.WorkspaceSection);
+                Assert.True(main.FindControl<Button>("WorkspaceCatalogButton")!.IsEffectivelyVisible);
+                for (var i = 0; vm.IsBusy && i < 300; i++) await Task.Delay(10);
+                Assert.False(vm.IsBusy);
             }
             finally { main.DataContext = null; main.Close(); }
         }
@@ -176,9 +177,13 @@ public sealed class ProfileVersionPickerUiTests
             var name = dialog.FindControl<TextBox>("ProfileNameInput")!;
             var hint = dialog.FindControl<TextBlock>("MissingProfileFieldsHint")!;
             var nameBorder = Assert.IsType<Border>(name.Parent);
-            Assert.False(save.IsEnabled);
+            Assert.True(save.IsEnabled);
+            Assert.False(hint.IsVisible);
+            Assert.DoesNotContain("missing", nameBorder.Classes);
+            save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.True(hint.IsVisible);
             Assert.Contains("missing", nameBorder.Classes);
+            Assert.Same(name, dialog.FocusManager?.GetFocusedElement());
             Assert.Equal(["1.21.8", "1.21.1"], list.Items.Cast<VersionEntry>().Select(v => v.Id));
             search.Text = "1.21.1";
             list.SelectedItem = Assert.Single(list.Items.Cast<VersionEntry>());
@@ -194,7 +199,7 @@ public sealed class ProfileVersionPickerUiTests
             vm.ShowReleases = false;
             vm.ShowHistorical = true;
             Assert.Equal(["25w01a", "b1.7.3"], list.Items.Cast<VersionEntry>().Select(v => v.Id));
-            Assert.False(save.IsEnabled);
+            Assert.True(save.IsEnabled);
             name.Text = "Catalog test";
             Assert.False(hint.IsVisible);
             Assert.DoesNotContain("missing", nameBorder.Classes);

@@ -14,20 +14,40 @@ public sealed partial class MainWindow : Window
 {
     private MainViewModel? updateVm;
     private LauncherUpdateDialog? updateDialog;
+    private async void ChooseDataRoot(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false } vm) return;
+        var root = await new DataRootDialog(vm.DataRoot).ShowDialog<string?>(this);
+        if (root is null || !vm.IsIdle || vm.IsGameLaunchActive) return;
+        try
+        {
+            var executable = Environment.ProcessPath ?? throw new InvalidOperationException();
+            var start = new System.Diagnostics.ProcessStartInfo(executable) { UseShellExecute = false };
+            if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+                start.ArgumentList.Add(typeof(Program).Assembly.Location);
+            start.ArgumentList.Add("--data-root");
+            start.ArgumentList.Add(root);
+            using var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException();
+            Close();
+        }
+        catch (Exception error)
+        {
+            vm.Services.Log.Error("data-root.switch", error);
+            vm.Status = TextCatalog.Format("DataOpenFailed", root);
+        }
+    }
     public MainWindow()
     {
         InitializeComponent();
-        ModDropZone.AddHandler(DragDrop.DragOverEvent, OnDragOver);
-        ModDropZone.AddHandler(DragDrop.DropEvent, OnDrop);
         ProfileModDropZone.AddHandler(DragDrop.DragOverEvent, OnDragOver);
         ProfileModDropZone.AddHandler(DragDrop.DropEvent, OnDrop);
         DataContextChanged += (_, _) =>
         {
-            if (updateVm is not null) { updateVm.LauncherUpdateOffered -= OfferLauncherUpdate; updateVm.LauncherRestartReady -= RestartLauncher; updateVm.ProfileConsoleUpdated -= ScrollProfileConsole; }
+            if (updateVm is not null) { updateVm.LauncherUpdateOffered -= OfferLauncherUpdate; updateVm.LauncherRestartReady -= RestartLauncher; updateVm.ProfileConsoleUpdated -= ScrollProfileConsole; updateVm.DisableWorkspaceWatching(); }
             updateVm = DataContext as MainViewModel;
-            if (updateVm is not null) { updateVm.LauncherUpdateOffered += OfferLauncherUpdate; updateVm.LauncherRestartReady += RestartLauncher; updateVm.ProfileConsoleUpdated += ScrollProfileConsole; }
+            if (updateVm is not null) { updateVm.LauncherUpdateOffered += OfferLauncherUpdate; updateVm.LauncherRestartReady += RestartLauncher; updateVm.ProfileConsoleUpdated += ScrollProfileConsole; updateVm.EnableWorkspaceWatching(); }
         };
-        Closed += (_, _) => updateVm?.CancelLauncherUpdateCheck();
+        Closed += (_, _) => { updateVm?.CancelLauncherUpdateCheck(); updateVm?.DisableWorkspaceWatching(); };
         Closing += (_, e) =>
         {
             if(DataContext is not MainViewModel {TranslationDirty:true} vm)return;
@@ -44,6 +64,7 @@ public sealed partial class MainWindow : Window
     }
     private void RestartLauncher(object? sender, EventArgs e) { updateDialog?.Close(); Close(); }
     private async void CheckLauncherUpdates(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.CheckLauncherUpdatesAsync(); }
+    private async void SaveManualOffline(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.SaveManualOfflineAsync(); }
     private async void SaveLauncherUpdateSettings(object? sender, RoutedEventArgs e) { if (DataContext is MainViewModel vm) await vm.SaveLauncherUpdateSettingsAsync(); }
     public Task<bool> EnsureLanguageSelectedAsync()
     {
@@ -109,32 +130,23 @@ public sealed partial class MainWindow : Window
         if (DataContext is not MainViewModel vm || vm.IsBusy || vm.SelectedProfile is null) return;
         await new ProfileEditor { DataContext = vm }.ShowDialog<bool>(this);
     }
-    private async void SelectProfileSection(object? sender, RoutedEventArgs e)
+    private void SelectProfileSection(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm && sender is Button { Tag: string tag } && Enum.TryParse<ProfileSection>(tag, out var section))
         {
             vm.ChooseWorkspaceSection(section);
             if (section == ProfileSection.Console) ScrollProfileConsole();
-            if (section == ProfileSection.Mods && vm.WorkspaceModTableVisible) await vm.InspectWorkspaceModsAsync();
-            if (vm.WorkspaceContentVisible) await vm.RefreshWorkspaceContentAsync();
         }
     }
     private async void OpenModCatalog(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is MainViewModel { CanUseOnlineCatalog: true, SelectedProfile: { } profile } vm)
+        if (DataContext is MainViewModel { IsIdle: true, CanManageMods: true, SelectedProfile: { } profile } vm)
         {
             await ShowModCatalogAsync(vm, profile);
         }
     }
-    private void SortWorkspaceMods(object? sender, RoutedEventArgs e)
-    { if (DataContext is MainViewModel vm) vm.SortWorkspaceMods(); }
-    private async void OpenCart(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is MainViewModel { IsIdle: true, CanManageMods: true, SelectedProfile: { } profile } vm)
-        {
-            await ShowModCatalogAsync(vm, profile, review: true);
-        }
-    }
+    private async void RefreshWorkspaceFiles(object? sender, RoutedEventArgs e)
+    { if (DataContext is MainViewModel vm) await vm.RefreshVisibleWorkspaceAsync(); }
     internal async Task OpenLocalCartAsync(MainViewModel vm, Guid profileId)
     {
         if (vm.SelectedProfile is { } profile && profile.Id == profileId && vm.Cart.Count > 0)
@@ -145,14 +157,8 @@ public sealed partial class MainWindow : Window
             await ShowModCatalogAsync(vm, profile, review: true);
         }
     }
-    private async Task ShowModCatalogAsync(MainViewModel vm, GameProfile profile, bool review = false)
-    {
-        var installed = await new ModCatalogDialog(vm, profile, review).ShowDialog<bool>(this);
-        if (!installed || vm.SelectedProfile?.Id != profile.Id) return;
-        if (vm.WorkspaceProfileId != profile.Id) vm.OpenProfileWorkspace(profile.Id);
-        vm.ChooseWorkspaceSection(ProfileSection.Mods);
-        await vm.InspectWorkspaceModsAsync();
-    }
+    private Task ShowModCatalogAsync(MainViewModel vm, GameProfile profile, bool review = false) =>
+        new ModCatalogDialog(vm, profile, review).ShowDialog<bool>(this);
     private void OpenWorkspaceFolder(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm && sender is Button { Tag: string kind }) vm.OpenWorkspaceFolder(kind);
@@ -240,7 +246,6 @@ public sealed partial class MainWindow : Window
             await vm.AddModsAsync(files.Select(f => f.TryGetLocalPath()).OfType<string>());
             if (!vm.LastOperationSucceeded) return;
             await OpenLocalCartAsync(vm, profileId.Value);
-            if (sender is Button { Name: "SettingsImportModsButton" } && vm.CanManageMods) vm.Page = LauncherPage.Mods;
         }
         catch (Exception ex) { vm.Status = ex.Message; }
     }

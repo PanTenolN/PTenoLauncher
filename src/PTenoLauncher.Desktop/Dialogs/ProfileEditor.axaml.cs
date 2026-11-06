@@ -26,6 +26,7 @@ public sealed partial class ProfileEditor : Window
         {
             if (DataContext is not MainViewModel vm) return;
             editor = vm;
+            vm.SetProfileValidation(false);
             vm.PropertyChanged += EditorChanged;
             if (vm.IsCreatingProfile)
             {
@@ -92,7 +93,15 @@ public sealed partial class ProfileEditor : Window
     }
     private async void Save(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel vm || vm.IsBusy || !vm.ProfileFieldsComplete) return;
+        if (DataContext is not MainViewModel vm || vm.IsBusy) return;
+        vm.SetProfileValidation(true);
+        if (!vm.ProfileFieldsComplete)
+        {
+            var first = vm.MissingProfileName ? "ProfileNameInput" : vm.MissingProfileMinecraft ? "VersionSearchInput" :
+                vm.MissingProfileMemory ? "ProfileMemoryInput" : "ProfileLoaderVersionList";
+            this.FindControl<Control>(first)!.Focus();
+            return;
+        }
         await vm.SaveCommand.ExecuteAsync(); if (vm.LastOperationSucceeded) Close(true);
     }
     private async void Cancel(object? sender, RoutedEventArgs e)

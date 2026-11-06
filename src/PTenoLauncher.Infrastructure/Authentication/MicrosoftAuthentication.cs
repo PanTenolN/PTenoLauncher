@@ -41,7 +41,8 @@ public sealed partial class MicrosoftAuthentication(SecretVault vault, HttpClien
     }
     public async Task<MinecraftSession> SignInAsync(bool interactive, CancellationToken ct = default)
     {
-        network.RequireOnline();
+        if (interactive) network.RequireOnline();
+        else network.RequireOnlineForLaunchAuthentication();
         if (app is null) throw new InvalidOperationException("Спочатку збережіть власний Microsoft Client ID у налаштуваннях.");
         await gate.WaitAsync(ct);
         try

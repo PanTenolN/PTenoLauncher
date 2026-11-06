@@ -5,6 +5,13 @@ using PTenoLauncher.Infrastructure.Minecraft;
 
 namespace PTenoLauncher.Desktop.ViewModels;
 
+internal sealed record ContentCartPick(CatalogSearchHit Project, CatalogModVersion Version, bool Installed = false, string Result = "")
+{
+    public string Title => Project.Title;
+    public string VersionLabel => Version.Number + " · " + Version.Id;
+    public string FileName => Version.File.Name;
+}
+
 public sealed partial class MainViewModel
 {
     public bool WorkspaceResourcePacks => IsProfileWorkspace && WorkspaceSection == ProfileSection.ResourcePacks;
@@ -27,42 +34,17 @@ public sealed partial class MainViewModel
     }
     public bool HasWorkspaceContentSelection => WorkspaceContentSelection is not null;
 
-    public Task RefreshWorkspaceContentAsync() => RunAsync(async ct =>
+    private Task ReloadWorkspaceContentAsync(Guid id, ProfileContentKind kind, string? select = null)
     {
-        if (WorkspaceProfileId is { } id && WorkspaceContentKind is { } kind)
-            await LoadWorkspaceContentAsync(id, kind, ct);
-    });
-
-    private async Task LoadWorkspaceContentAsync(Guid id, ProfileContentKind kind, CancellationToken ct, string? select = null)
-    {
-        WorkspaceContentRows.Clear();
-        WorkspaceContentSelection = null;
-        var rows = await services.Content.ListAsync(id, kind, ct);
-        if (WorkspaceProfileId != id || WorkspaceContentKind != kind) return;
-        foreach (var item in rows) WorkspaceContentRows.Add(item);
-        WorkspaceContentSelection = WorkspaceContentRows.FirstOrDefault(row => row.FileName == select);
-        if (kind == ProfileContentKind.Shaders)
+        var section = kind switch
         {
-            WorkspaceShaderSupport = TextCatalog.Get("ContentShaderComponentUnknown");
-            if (SelectedProfile?.Loader == ModLoader.Vanilla) return;
-            var mods = System.IO.Path.Combine(services.Paths.Game(id), "mods");
-            if (!Directory.Exists(mods)) return;
-            foreach (var jar in Directory.EnumerateFiles(mods, "*.jar").Take(200))
-            {
-                try
-                {
-                    var info = await services.Mods.InspectAsync(jar, ct);
-                    if (info.Loader == SelectedProfile?.Loader && info.Id is "iris" or "oculus" or "optifine")
-                    {
-                        WorkspaceShaderSupport = TextCatalog.Format("ContentShaderComponentFound", info.Name ?? info.Id, info.Version ?? "");
-                        break;
-                    }
-                }
-                catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or System.Text.Json.JsonException) { }
-            }
-        }
+            ProfileContentKind.ResourcePacks => ProfileSection.ResourcePacks,
+            ProfileContentKind.Shaders => ProfileSection.Shaders,
+            ProfileContentKind.Worlds => ProfileSection.Worlds,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        return InvalidateWorkspaceAsync(new(id, section), select);
     }
-
     internal Task ImportWorkspacePackAsync(Guid id, ProfileContentKind kind, string file) => RunAsync(async ct =>
     {
         if (WorkspaceProfileId != id || WorkspaceContentKind != kind || kind == ProfileContentKind.Worlds || IsGameLaunchActive) return;
@@ -71,7 +53,7 @@ public sealed partial class MainViewModel
         catch (Exception error) when (error is IOException or InvalidDataException)
         { throw new InvalidOperationException(TextCatalog.Get(error.Message.StartsWith("Content", StringComparison.Ordinal)
             ? error.Message : "ContentInvalidZip"), error); }
-        await LoadWorkspaceContentAsync(id, kind, CancellationToken.None, imported.FileName);
+        await ReloadWorkspaceContentAsync(id, kind, imported.FileName);
         Status = TextCatalog.Format("ContentAdded", imported.Name);
     });
 
@@ -85,28 +67,57 @@ public sealed partial class MainViewModel
         }
         catch (IOException error) when (error.Message.StartsWith("Content", StringComparison.Ordinal))
         { throw new InvalidOperationException(TextCatalog.Get(error.Message), error); }
-        if (remove) await LoadWorkspaceContentAsync(plan.Profile, plan.Kind, CancellationToken.None);
+        if (remove) await ReloadWorkspaceContentAsync(plan.Profile, plan.Kind);
         Status = TextCatalog.Format(remove ? "ContentRemoved" : "ContentCopied", plan.Target);
     });
 
-    internal Task InstallWorkspaceContentAsync(GameProfile profile, ProfileContentKind kind, CatalogSearchHit hit, CatalogModVersion version) =>
+    internal Task InstallWorkspaceContentAsync(GameProfile profile, ProfileContentKind kind, IReadOnlyList<ContentCartPick> picks,
+        Action<ContentCartPick, ProfileContentEntry?, string> report) =>
         RunAsync(async ct =>
         {
             if (WorkspaceProfileId != profile.Id || SelectedProfile != profile || WorkspaceContentKind != kind ||
-                IsGameLaunchActive || version.ProjectId != hit.Id || !version.GameVersions.Contains(profile.MinecraftVersion, StringComparer.Ordinal))
+                IsGameLaunchActive || kind == ProfileContentKind.Worlds || picks.Count is < 1 or > 64 ||
+                picks.Any(pick => pick.Installed || pick.Version.ProjectId != pick.Project.Id ||
+                    !pick.Version.GameVersions.Contains(profile.MinecraftVersion, StringComparer.Ordinal)))
                 throw new InvalidOperationException(TextCatalog.Get("ContentChanged"));
-            ProfileContentEntry installed;
+            var installed = 0;
+            string? last = null;
             try
             {
-                installed = await TrackDownloadsAsync(hit.Title, profile.Name, async progress =>
+                foreach (var pick in picks)
                 {
-                    var source = await services.Modrinth.DownloadContentAsync(version, progress, ct);
-                    return await services.Content.ImportAsync(profile.Id, kind, source, ct, version.File.Name, version.File.Sha512);
-                }, ct);
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var result = await TrackDownloadsAsync(pick.Title, profile.Name, async progress =>
+                        {
+                            var source = await services.Modrinth.DownloadContentAsync(pick.Version, progress, ct);
+                            return await services.Content.ImportAsync(profile.Id, kind, source, ct, pick.FileName, pick.Version.File.Sha512, pick.Title);
+                        }, ct);
+                        installed++;
+                        last = result.FileName;
+                        report(pick, result, TextCatalog.Format("ContentAdded", result.FileName));
+                    }
+                    catch (Exception error) when (!ct.IsCancellationRequested && error is IOException or InvalidDataException or
+                        InvalidOperationException or HttpRequestException or UnauthorizedAccessException or TaskCanceledException)
+                    {
+                        services.Log.Error("content.cart.install", error);
+                        var reason = error switch
+                        {
+                            HttpRequestException { StatusCode: { } code } => TextCatalog.Format("ContentCartHttpFailed", (int)code),
+                            HttpRequestException or TaskCanceledException => TextCatalog.Get("ContentCartNetworkFailed"),
+                            _ when error.Message.StartsWith("Content", StringComparison.Ordinal) => TextCatalog.Get(error.Message),
+                            InvalidDataException => TextCatalog.Get("ContentCatalogMismatch"),
+                            _ => TextCatalog.Get("ContentCartFileFailed")
+                        };
+                        report(pick, null, reason);
+                    }
+                }
             }
-            catch (Exception error) when (error is IOException or InvalidDataException && error.Message.StartsWith("Content", StringComparison.Ordinal))
-            { throw new InvalidOperationException(TextCatalog.Get(error.Message), error); }
-            await LoadWorkspaceContentAsync(profile.Id, kind, CancellationToken.None, installed.FileName);
-            Status = TextCatalog.Format("ContentAdded", installed.Name);
+            finally
+            {
+                if (installed != 0) await ReloadWorkspaceContentAsync(profile.Id, kind, last);
+            }
+            Status = TextCatalog.Format("ContentCartResult", installed, picks.Count - installed);
         });
 }

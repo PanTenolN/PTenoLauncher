@@ -10,6 +10,8 @@ namespace PTenoLauncher.Desktop.Dialogs;
 public sealed partial class PackCompareDialog : Window
 {
     private string? left, right;
+    private PackComparisonResult? comparison;
+    private PackCopyPlan? plan;
     public sealed record CompareRow(string Status, string Left, string Right);
 
     public PackCompareDialog()
@@ -29,27 +31,98 @@ public sealed partial class PackCompareDialog : Window
                 AllowMultiple = false, FileTypeFilter = [new("Modrinth .mrpack") { Patterns = ["*.mrpack"] }]
             });
             if (files.Count != 1 || files[0].TryGetLocalPath() is not { } file) return;
-            if (side == "left") left = file; else right = file;
-            LeftSummary.Text = Path.GetFileName(left);
-            RightSummary.Text = Path.GetFileName(right);
-            TargetSummary.Text = CompareStatus.Text = "";
-            Differences.ItemsSource = null;
-            if (left is null || right is null) return;
-
-            var leftFile = left;
-            var rightFile = right;
-            await vm.RunAsync(async ct =>
-            {
-                var comparison = await new PackComparison(vm.Services.Paths).CompareAsync(leftFile, rightFile, ct);
-                LeftSummary.Text = Target(comparison.Left);
-                RightSummary.Text = Target(comparison.Right);
-                TargetSummary.Text = TextCatalog.Get(comparison.SameTarget ? "PackCompareTargetSame" : "PackCompareTargetChanged");
-                Differences.ItemsSource = comparison.Files.Select(row => new CompareRow(TextCatalog.Get(row.Kind), Format(row.Left), Format(row.Right))).ToArray();
-            });
-            if (!vm.LastOperationSucceeded) CompareStatus.Text = vm.Status;
+            await SetSourceAsync(side, file);
         }
         catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
         { CompareStatus.Text = error.Message; }
+    }
+
+    internal async Task SetSourceAsync(string side, string file)
+    {
+        if (DataContext is not MainViewModel { IsIdle: true } vm) return;
+        if (side == "left") left = file; else right = file;
+        comparison = null;
+        LeftBasis.IsChecked = RightBasis.IsChecked = false;
+        LeftBasis.IsEnabled = RightBasis.IsEnabled = false;
+        ResetPlan();
+        LeftSummary.Text = Path.GetFileName(left);
+        RightSummary.Text = Path.GetFileName(right);
+        if (left is null || right is null) return;
+        await vm.RunAsync(async ct => comparison = await new PackComparison(vm.Services.Paths).CompareAsync(left, right, ct));
+        if (!vm.LastOperationSucceeded) { CompareStatus.Text = vm.Status; return; }
+        LeftBasis.IsEnabled = RightBasis.IsEnabled = true;
+        LeftSummary.Text = Target(comparison!.Left);
+        RightSummary.Text = Target(comparison.Right);
+        ShowComparison();
+    }
+
+    private void BasisChanged(object? sender, RoutedEventArgs e)
+    {
+        if (PrepareCopyButton is null || Differences is null) return;
+        ResetPlan();
+        ShowComparison();
+    }
+
+    private void ResetPlan()
+    {
+        plan = null;
+        CopyConsent.IsChecked = false;
+        CopyConsent.IsVisible = false;
+        CreateCopyButton.IsEnabled = false;
+        PrepareCopyButton.IsEnabled = comparison is not null && (LeftBasis.IsChecked == true || RightBasis.IsChecked == true);
+        TargetSummary.Text = CompareStatus.Text = "";
+        Differences.ItemsSource = null;
+    }
+
+    private void ShowComparison()
+    {
+        if (comparison is not { } current) return;
+        TargetSummary.Text = TextCatalog.Get(current.SameTarget ? "PackCompareTargetSame" : "PackCompareTargetChanged");
+        Differences.ItemsSource = current.Files.Select(row => new CompareRow(TextCatalog.Get(row.Kind), Format(row.Left), Format(row.Right))).ToArray();
+    }
+
+    private async void PrepareCopy(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false } vm || left is null || right is null ||
+            comparison is null || LeftBasis.IsChecked != true && RightBasis.IsChecked != true) return;
+        var basis = LeftBasis.IsChecked == true ? PackBasis.Left : PackBasis.Right;
+        ResetPlan();
+        CompareStatus.Text = TextCatalog.Get("PackCopyChecking");
+        await vm.RunAsync(async ct => plan = await vm.Services.Modpacks.PrepareCopyAsync(left, right, basis, ct));
+        if (!vm.LastOperationSucceeded || plan is not { } prepared)
+        {
+            ShowComparison();
+            CompareStatus.Text = vm.Status;
+            return;
+        }
+        TargetSummary.Text = TextCatalog.Format("PackCopyTarget", prepared.ProfileName, prepared.Minecraft, prepared.Loader, prepared.LoaderVersion ?? "—") +
+            Environment.NewLine + Path.GetFileName(prepared.BaseArchive) + " · SHA-256 " + prepared.BaseSha256 +
+            Environment.NewLine + Path.GetFileName(prepared.OtherArchive) + " · SHA-256 " + prepared.OtherSha256;
+        var findings = prepared.Blockers.Select(problem => new CompareRow(TextCatalog.Get("PackBlocked"),
+            TextCatalog.Get(problem.Code) + " " + problem.Detail, ""))
+            .Concat(prepared.Warnings.Select(warning => new CompareRow("", warning, "")));
+        Differences.ItemsSource = findings.Concat(prepared.Rows.Select(row => new CompareRow(
+            TextCatalog.Get(row.Decision) + (row.Verification is { } state ? Environment.NewLine + TextCatalog.Get(state) : ""),
+            Format(row.Basis), Format(row.Other)))).ToArray();
+        CopyConsent.IsVisible = prepared.CanCreate;
+        CompareStatus.Text = TextCatalog.Get(prepared.CanCreate ? "PackPreviewReady" : "PackBlocked");
+    }
+
+    private void ConsentChanged(object? sender, RoutedEventArgs e)
+    {
+        if (CreateCopyButton is not null) CreateCopyButton.IsEnabled = plan is { CanCreate: true } && CopyConsent.IsChecked == true;
+    }
+
+    private async void CreateCopy(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false } vm ||
+            plan is not { CanCreate: true } reviewed || CopyConsent.IsChecked != true) return;
+        CopyConsent.IsChecked = false;
+        CopyConsent.IsVisible = false;
+        plan = null;
+        CompareStatus.Text = TextCatalog.Get("PackCopyCreate");
+        await vm.CreateReconciledCopyAsync(reviewed);
+        CompareStatus.Text = vm.Status;
     }
 
     private static string Target(ComparedPack pack) =>

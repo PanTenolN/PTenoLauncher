@@ -145,9 +145,12 @@ public sealed class ProfileDeletionService(LauncherPaths paths, ILauncherStore s
     {
         foreach (var move in journal.Moves)
         {
-            _ = SafePath.Join(paths.Root, move.Source); _ = SafePath.Join(paths.Root, move.Destination);
+            var source = SafePath.Join(paths.Root, move.Source);
+            var destination = SafePath.Join(paths.Root, move.Destination);
             if (!move.Destination.StartsWith($"trash/{journal.Operation:N}/item-", StringComparison.Ordinal) ||
-                !(move.Directory && LauncherPaths.IsProfileRelative(journal.ProfileId, move.Source) ||
+                !(move.Directory && (LauncherPaths.IsLegacyProfileRelative(journal.ProfileId, move.Source) ||
+                    move.Source.StartsWith("instances/", StringComparison.Ordinal) && move.Source.Count(c => c == '/') == 1 &&
+                    (LauncherPaths.HasIdentity(source, journal.ProfileId) || LauncherPaths.HasIdentity(destination, journal.ProfileId))) ||
                   !move.Directory && (move.Source.StartsWith("backups/", StringComparison.Ordinal) || move.Source.StartsWith("exports/", StringComparison.Ordinal))))
                 throw new InvalidDataException("Небезпечний журнал видалення.");
         }

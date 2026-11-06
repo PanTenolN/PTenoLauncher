@@ -134,6 +134,64 @@ public sealed class ProfileWorkspaceTests
     }
 
     [AvaloniaFact]
+    public async Task InstalledModsStayAlphabeticalThroughFilteringRefreshAndLocalInstall()
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await services.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric);
+        await services.Store.SaveProfileAsync(profile);
+        var mods = Path.Combine(ws.Paths.Game(profile.Id), "mods");
+        await File.WriteAllBytesAsync(Path.Combine(mods, "zzz-original.jar"), ModUpdateTests.Fixture.Jar("alpha", "1.0"));
+        await File.WriteAllBytesAsync(Path.Combine(mods, "mmm-original.jar"), ModUpdateTests.Fixture.Jar("middle", "1.0"));
+        await File.WriteAllBytesAsync(Path.Combine(mods, "aaa-original.jar"), ModUpdateTests.Fixture.Jar("zeta", "1.0"));
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.Offline = true;
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(ProfileSection.Mods);
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            await vm.WaitForWorkspaceSnapshotAsync();
+            var expected = new[] { "alpha", "middle", "zeta" };
+            Assert.Equal(expected, vm.WorkspaceModRows.Select(row => row.Name));
+            Assert.Null(window.FindControl<Button>("WorkspaceCartButton"));
+            Assert.Null(window.FindControl<Button>("OrganizeModNames"));
+            vm.WorkspaceModQuery = "original";
+            Assert.Equal(expected, vm.WorkspaceModRows.Select(row => row.Name));
+            vm.WorkspaceModQuery = "aaa";
+            Assert.Equal("zeta", Assert.Single(vm.WorkspaceModRows).Name);
+            vm.WorkspaceModQuery = "";
+            vm.ChooseWorkspaceSection(ProfileSection.Overview);
+            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+            Assert.Equal(expected, vm.WorkspaceModRows.Select(row => row.Name));
+            await vm.RefreshVisibleWorkspaceAsync();
+            Assert.Equal(expected, vm.WorkspaceModRows.Select(row => row.Name));
+
+            var input = Path.Combine(ws.Paths.Root, "q-added.jar");
+            await File.WriteAllBytesAsync(input, ModUpdateTests.Fixture.Jar("beta", "1.0"));
+            await vm.AddModsAsync([input]);
+            var review = window.OpenLocalCartAsync(vm, profile.Id);
+            var choice = Assert.Single(window.OwnedWindows.OfType<LocalDependenciesDialog>());
+            choice.FindControl<Button>("ManualOnly")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            for (var i = 0; i < 500 && (!vm.IsIdle || !window.OwnedWindows.OfType<ModCatalogDialog>().Any()); i++) await Task.Delay(10);
+            var cart = Assert.Single(window.OwnedWindows.OfType<ModCatalogDialog>());
+            Assert.False(File.Exists(Path.Combine(mods, "q-added.jar")));
+            cart.FindControl<CheckBox>("UnknownModAcceptance")!.IsChecked = true;
+            var install = cart.FindControl<Button>("InstallCombinedCartButton")!;
+            Assert.True(install.IsEnabled, vm.Status);
+            install.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await review.WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.Equal(new[] { "alpha", "beta", "middle", "zeta" }, vm.WorkspaceModRows.Select(row => row.Name));
+            Assert.Equal(new[] { "aaa-original.jar", "mmm-original.jar", "q-added.jar", "zzz-original.jar" },
+                Directory.GetFiles(mods, "*.jar").Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task SettingsSectionsFitVerticallyAtMinimumWindowSize()
     {
         using var ws = new TestWorkspace();
@@ -194,7 +252,6 @@ public sealed class ProfileWorkspaceTests
             var staleVersionShown = false;
             vm.RemoteVersions.CollectionChanged += (_, _) => staleVersionShown |= vm.SelectedRemoteProject?.Id == "B" && vm.RemoteVersions.Any(v => v.ProjectId != "B");
             query.Text = "JEI";
-            query.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
             await Until(() => vm.IsIdle && vm.SelectedRemoteVersion?.Id == "B1");
             Assert.False(staleVersionShown);
             dialog.UpdateLayout();
@@ -205,6 +262,24 @@ public sealed class ProfileWorkspaceTests
             Capture(dialog, "catalog");
             Click(dialog, "CatalogAdd");
             await Until(() => vm.IsIdle);
+            var add = dialog.FindControl<Button>("CatalogAdd")!;
+            Assert.False(add.IsEnabled);
+            Assert.Equal(PTenoLauncher.Desktop.Localization.TextCatalog.Get("CatalogInCart"), add.Content);
+            var selected = vm.SelectedRemoteVersion!;
+            var otherVersion = selected with { Id = "other-version" };
+            vm.RemoteVersions.Add(otherVersion);
+            var versions = dialog.FindControl<ComboBox>("CatalogVersionList")!;
+            versions.SelectedItem = otherVersion;
+            Assert.True(add.IsEnabled);
+            Assert.Equal(PTenoLauncher.Desktop.Localization.TextCatalog.Get("CatalogReplace"), add.Content);
+            Click(dialog, "CatalogAdd");
+            Assert.Equal(otherVersion.Id, Assert.Single(vm.CatalogPicks).Request.VersionId);
+            versions.SelectedItem = selected;
+            Click(dialog, "CatalogAdd");
+            Click(dialog, "CatalogRemoveSelected");
+            await Until(() => vm.IsIdle && add.IsEnabled);
+            Assert.Empty(vm.CatalogPicks);
+            Click(dialog, "CatalogAdd");
             Click(dialog, "CatalogReview");
             await Until(() => vm.IsIdle && dialog.FindControl<Panel>("CartStep")!.IsVisible && vm.RemoteEntries.Count == 2);
             Click(dialog, "CatalogBack");

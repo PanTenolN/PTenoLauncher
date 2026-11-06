@@ -9,23 +9,26 @@ namespace PTenoLauncher.Infrastructure.Mods;
 
 public sealed record ModCartItem(string SourcePath, ModInspection Inspection, string? Reason = null, string? CatalogTitle = null);
 public enum ModBlockerKind { Definite, MissingDependency, DependencyVersion, DependencyConflict }
-public sealed record ModBlocker(ModBlockerKind Kind, string Message, ModIdentityConflict? Conflict = null);
+public sealed record ModBlocker(ModBlockerKind Kind, string Message, ModIdentityConflict? Conflict = null, ModRequirement? Requirement = null);
 public sealed record ModCartReview(IReadOnlyList<string> Blockers, IReadOnlyList<string> Warnings, IReadOnlyList<ModBlocker> Details, NativeModSelection? NativeSelection = null);
 
 public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore store)
 {
-    public async Task<ModInspection> InspectAsync(string file, CancellationToken ct = default)
+    public Task<ModInspection> InspectAsync(string file, CancellationToken ct = default) =>
+        InspectPayloadAsync(file, Path.GetFileName(file), ct);
+
+    internal async Task<ModInspection> InspectPayloadAsync(string file, string fileName, CancellationToken ct)
     {
         SafePath.RejectLinks(file);
         var info = new FileInfo(file);
-        if (!info.Extension.Equals(".jar", StringComparison.OrdinalIgnoreCase) || info.Length > 512L * 1024 * 1024)
+        if (!Path.GetExtension(fileName).Equals(".jar", StringComparison.OrdinalIgnoreCase) || info.Length > 512L * 1024 * 1024)
             throw new InvalidDataException("Оберіть JAR до 512 MB.");
         await using var stream = File.OpenRead(file);
         var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct)).ToLowerInvariant();
         stream.Position = 0;
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, true);
         SafeArchive.Validate(zip, paths.Cache);
-        return await InspectArchiveAsync(zip, info.Name, hash, info.Length, new NativeBudget(), 0, null, ct);
+        return await InspectArchiveAsync(zip, fileName, hash, info.Length, new NativeBudget(), 0, null, ct);
     }
     private async Task<ModInspection> InspectArchiveAsync(ZipArchive zip, string fileName, string hash, long size,
         NativeBudget budget, int depth, ModLoader? nativeContext, CancellationToken ct)
@@ -163,7 +166,7 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
             var requirements = (mod.Requirements ?? []).Concat(EffectiveFabricChildren(mod, rootIds).SelectMany(m => m.Requirements)).ToArray();
             var required = mod.RequiredDependencies.Concat(requirements.Where(r => r.Kind == "required").Select(r => r.Id)).Distinct();
             foreach (var dependency in required.Where(d => mod.Loader is not (ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge) && !knownIds.Contains(d)))
-                Block(ModBlockerKind.MissingDependency, $"{mod.FileName}: відсутня обов'язкова залежність {dependency}.");
+                blockers.Add(new(ModBlockerKind.MissingDependency, $"{mod.FileName}: відсутня обов'язкова залежність {dependency}.", Requirement: requirements.FirstOrDefault(r => r.Id == dependency && r.Kind == "required") ?? new(dependency, ["*"])));
             if (mod.SourceStatus == "Unknown Source") warnings.Add($"{mod.FileName}: Unknown Source; антивірусна перевірка не виконана.");
             foreach (var requirement in requirements)
             {
@@ -244,7 +247,8 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
                     finally { if (File.Exists(part)) File.Delete(part); }
                 }
                 if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(cached, mod.Sha256, "SHA256", mod.Size, ct)) throw new InvalidDataException("Пошкоджений кеш JAR.");
-                var target = SafePath.Join(game, ChooseInstallPath(game, mod.FileName, mod.Sha256, reservedNames));
+                var target = SafePath.Join(game, ChooseInstallPath(game, mod.FileName, mod.Sha256, reservedNames,
+                    (mod.Id ?? "Mod") + (mod.Version is null ? "" : "-" + mod.Version)));
                 var temp = target + ".pending-" + transaction.ToString("N");
                 var origin = item.Inspection.SourceStatus switch
                 {
@@ -268,17 +272,13 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         finally { foreach (var (temp, _) in staged) if (File.Exists(temp)) File.Delete(temp); }
     }
 
-    internal static string ChooseInstallPath(string game, string fileName, string hash, HashSet<string> reserved)
+    internal static string ChooseInstallPath(string game, string fileName, string hash, HashSet<string> reserved, string fallback = "Mod")
     {
         if (fileName != Path.GetFileName(fileName) || !fileName.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Invalid JAR filename.");
         _ = SafePath.Join(game, "mods/" + fileName);
-        var stem = Path.GetFileNameWithoutExtension(fileName);
-        if (stem.Length > 180)
-        {
-            var length = char.IsHighSurrogate(stem[179]) ? 179 : 180;
-            stem = stem[..length].TrimEnd(' ', '.');
-        }
+        var original = Path.GetFileNameWithoutExtension(fileName);
+        var stem = ReadableName.Stem(ReadableName.StripDigest(original, hash) ?? original, ReadableName.Stem(fallback, "Mod"), 180);
         var extension = Path.GetExtension(fileName);
         for (var index = 0; index < 2048; index++)
         {

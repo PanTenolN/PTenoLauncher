@@ -107,9 +107,10 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
             foreach (var item in manifest.Files)
                 if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(SafePath.Join(stage, "game/" + item.RelativePath), item.Hash, item.Algorithm, item.Size, ct))
                     throw new InvalidDataException("Розпакований backup не пройшов перевірку.");
-            var destination = paths.ProfileFolderForCreation(profile);
-            Directory.CreateDirectory(destination);
-            if (Directory.Exists(Path.Combine(stage, "game"))) Directory.Move(Path.Combine(stage, "game"), paths.Game(profile.Id));
+            var stagedProfile = SafePath.Join(stage, ".pteno-profile");
+            Directory.CreateDirectory(stagedProfile);
+            if (Directory.Exists(Path.Combine(stage, "game"))) Directory.Move(Path.Combine(stage, "game"), Path.Combine(stagedProfile, "game"));
+            paths.PlaceProfileDirectory(profile, stagedProfile);
             await store.SaveProfileAsync(profile, ct);
             await store.AddHistoryAsync(profile.Id, "backup.restored", Path.GetFileName(file), ct);
             // No installation receipt is restored; shared game files must be installed/verified again.

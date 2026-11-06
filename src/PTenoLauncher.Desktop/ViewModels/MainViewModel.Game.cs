@@ -15,6 +15,7 @@ public sealed partial class MainViewModel
 
     private sealed class ProfileRun(Guid launchId)
     {
+        public PTenoLauncher.Infrastructure.Mods.WorkingConfiguration? WorkingCandidate { get; set; }
         public Guid LaunchId { get; } = launchId;
         public Queue<ConsoleLine> Lines { get; } = [];
         public ConsoleLineClassifier Classifier { get; } = new();
@@ -166,6 +167,7 @@ public sealed partial class MainViewModel
         }
         profileRuns[profileId] = run;
         SetGameLaunch(run.LaunchId);
+        Status = TextCatalog.Get(run.State);
         RefreshProfileConsole();
         var output = new Progress<string>(batch =>
         {
@@ -203,8 +205,11 @@ public sealed partial class MainViewModel
         });
         var started = new Progress<bool>(_ =>
         {
-            if (run.State != "WorkspaceStarting") return;
+            if (GameLaunchId != run.LaunchId || run.State != "WorkspaceStarting") return;
             run.State = "WorkspaceRunning";
+            GameProcessStarted = true;
+            Changed(nameof(GameProcessStarted));
+            Status = TextCatalog.Get(run.State);
             if (SelectedProfile?.Id == profileId) Changed(nameof(ProfileConsoleStatus));
         });
         var logOpened = new Progress<string>(path =>
@@ -218,6 +223,7 @@ public sealed partial class MainViewModel
                 path => ((IProgress<string>)logOpened).Report(path), ct);
             run.ExitCode = code;
             run.State = "WorkspaceFinished";
+            Status = TextCatalog.Format("GameExit", code);
             return code;
         }
         catch (OperationCanceledException) { run.State = "Message020"; throw; }
@@ -225,12 +231,15 @@ public sealed partial class MainViewModel
         finally { SetGameLaunch(null); Changed(nameof(ProfileConsoleStatus)); Changed(nameof(IsSelectedProfileRunning)); }
     }
     public Guid? GameLaunchId { get; private set; }
+    public bool GameProcessStarted { get; private set; }
     public bool IsGameLaunchActive => GameLaunchId is not null;
     public bool CanCancelOperation => IsBusy && !IsGameLaunchActive;
 
     private void SetGameLaunch(Guid? id)
     {
         GameLaunchId = id;
+        GameProcessStarted = false;
+        Changed(nameof(GameProcessStarted));
         Changed(nameof(GameLaunchId)); Changed(nameof(IsGameLaunchActive)); Changed(nameof(CanLeaveWorkspace)); Changed(nameof(CanCancelOperation)); RefreshHomeAction();
         CancelCommand.Refresh();
     }

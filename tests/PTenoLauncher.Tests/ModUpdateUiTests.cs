@@ -13,12 +13,18 @@ public sealed class ModUpdateUiTests
     {
         using var f = new ModUpdateTests.Fixture(); await f.Start();
         using var services = new LauncherServices(f.Ws.Paths); var vm = new MainViewModel(services, f.Manager); await vm.InitializeAsync();
-        vm.SelectedProfile = f.Profile; vm.Page = LauncherPage.Mods;
         var window = new MainWindow { DataContext = vm }; window.Show();
         try
         {
             Assert.False(services.Ai.Enabled);
-            Assert.True(window.FindControl<ScrollViewer>("ModsScroll")!.IsVisible);
+            var updates = window.FindControl<Expander>("ModUpdatesPanel")!;
+            var modTable = window.FindControl<Grid>("ProfileModDropZone")!;
+            Assert.False(modTable.IsVisible);
+            vm.OpenProfileWorkspace(f.Profile.Id);
+            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+            Assert.True(modTable.IsVisible);
+            Assert.False(updates.IsExpanded);
+            updates.IsExpanded = true;
             var button = window.FindControl<Button>("CheckModUpdatesButton")!;
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             for (var i = 0; vm.IsBusy && i < 1000; i++) await Task.Delay(10);
@@ -31,12 +37,15 @@ public sealed class ModUpdateUiTests
             window.FindControl<Button>("ApplyModUpdatesButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             for (var i = 0; vm.IsBusy && i < 1000; i++) await Task.Delay(10);
             Assert.True(vm.LastOperationSucceeded, vm.Status); Assert.Single(vm.ModUpdateHistory);
+            Assert.Equal("1.0.0", Assert.Single(vm.WorkspaceModRows).Version);
             f.Network.Offline = true; await vm.PreviewModRollbackAsync(); Assert.True(vm.LastOperationSucceeded, vm.Status); Assert.False(vm.UpdatesConfirmed);
             vm.UpdatesConfirmed = true; await vm.ApplyModUpdatesAsync(); Assert.True(vm.LastOperationSucceeded, vm.Status);
             Assert.Equal(f.Bytes["A1"], await File.ReadAllBytesAsync(f.Physical("mods/unrelated-name.jar")));
+            Assert.Equal("9.0.0", Assert.Single(vm.WorkspaceModRows).Version);
             await vm.CheckModUpdatesAsync(); vm.UpdatesConfirmed = true; await vm.SetModPinAsync(true); Assert.True(vm.LastOperationSucceeded, vm.Status);
             await vm.CheckModUpdatesAsync(); Assert.True(Assert.Single(vm.UpdateChoices).Row.Pinned);
             vm.UpdatesConfirmed = true; await vm.SetModPinAsync(false); Assert.True(vm.LastOperationSucceeded, vm.Status);
+            vm.BackFromProfileWorkspace();
             vm.SelectedProfile = null; Assert.Empty(vm.UpdateChoices); Assert.Empty(vm.ModUpdateHistory); Assert.Equal("", vm.ModUpdateSummary);
         }
         finally { window.Close(); }

@@ -17,6 +17,7 @@ public sealed class LauncherServices : IDisposable
     public LauncherPaths Paths { get; }
     public ILauncherStore Store { get; }
     public NetworkPolicy Network { get; } = new();
+    public InternetConnectivity Connectivity { get; }
     public LauncherLog Log { get; }
     public VersionManager Versions { get; }
     public MicrosoftAuthentication Authentication { get; }
@@ -45,14 +46,17 @@ public sealed class LauncherServices : IDisposable
     public ProfileContent Content { get; }
     public ProfileDeletionService Deletion { get; }
     public ProfileFolderMover ProfileFolders { get; }
+    public ProfileFileRenamer ProfileFiles { get; }
     public OpenAiClient OpenAi { get; }
     public TranslationWorkspace Translations { get; }
     public SecretVault AiSecrets { get; }
     private readonly HttpClient aiHttp;
     private readonly HttpClient http;
-    public LauncherServices(LauncherPaths paths, HttpMessageHandler? aiTransport = null, Func<string?>? aiKeyReader = null, HttpMessageHandler? coreTransport = null)
+    public LauncherServices(LauncherPaths paths, HttpMessageHandler? aiTransport = null, Func<string?>? aiKeyReader = null,
+        HttpMessageHandler? coreTransport = null, HttpMessageHandler? connectivityTransport = null)
     {
         http = coreTransport is null ? NetworkPolicy.CreateHttpClient() : new(coreTransport) { Timeout = TimeSpan.FromMinutes(10) };
+        Connectivity = new(connectivityTransport);
         Paths = paths; Paths.Initialize();
         Store = new SqliteLauncherStore(paths); Log = new(paths);
         var downloads = new VerifiedDownloader(http, Network);
@@ -67,18 +71,19 @@ public sealed class LauncherServices : IDisposable
         ForgeVersions = new(paths, downloads, Network);
         ForgeComponents = new(paths, ForgeVersions, downloads, Store);
         Forge = new(paths, ForgeComponents, Installer, Runtimes, Java, Store);
-        Launcher = new(paths, Readiness, Authentication, Network, Store, Log);
         Modrinth = new(paths, downloads, Network); RemoteMods = new(paths, Store, Modrinth, downloads, Mods); Backups = new(paths, Store);
         ModUpdates = new(paths, Store, Modrinth, downloads, Mods);
+        Launcher = new(paths, Readiness, Authentication, Network, Store, Log, ModUpdates);
         Modpacks = new(paths, (SqliteLauncherStore)Store, downloads, Network);
         PackExporter = new(paths, Store, Modrinth);
         LauncherUpdates = new LauncherUpdateWorkflow(paths, new(paths, downloads, Network, LauncherUpdateTrust.Production, LauncherBuild.Current), LauncherUpdateTrust.Production, AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
         Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage); Content = new(paths);
         ProfileFolders = new(paths, Store, Usage);
+        ProfileFiles = new(paths, Store, Mods, Content);
         AiSecrets = new(paths);
         aiHttp = new(new AiRequestGateHandler(Ai, aiTransport ?? new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(2) };
         OpenAi = new(aiHttp, Ai, Network, aiKeyReader ?? (() => AiSecrets.Read("openai-api-key") is { } bytes ? Encoding.UTF8.GetString(bytes) : null));
         Translations = new(paths, Store, Usage, Ai, OpenAi);
     }
-    public void Dispose() { Ai.SetEnabled(false); aiHttp.Dispose(); http.Dispose(); }
+    public void Dispose() { Ai.SetEnabled(false); Connectivity.Dispose(); aiHttp.Dispose(); http.Dispose(); }
 }

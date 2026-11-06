@@ -3,6 +3,36 @@ public static partial class TextCatalog
 {
     private static void RegisterMrpackTexts()
     {
+        Texts["CartProviderMismatch"] = ("Вибраний JAR не надає потрібний Mod ID і версію.", "The selected JAR does not provide the required mod ID and version.");
+        Texts["DataChooseRoot"] = ("Вибрати теку даних", "Choose data folder");
+        Texts["DataRootHint"] = ("Активна тека показана нижче. Вибери наявну базу, щоб відкрити її окремо.", "The current folder is shown below. Choose an existing database to open it separately.");
+        Texts["DataOpenFailed"] = ("Не вдалося відкрити базу профілів у {0}. Вибери теку з доступною базою.", "Could not open the profile database in {0}. Choose a folder with an accessible database.");
+        Texts["ProfileNameError"] = ("Введи назву від 1 до 80 символів без керівних знаків.", "Enter a name of 1–80 characters without control characters.");
+        Texts["ProfileMemoryError"] = ("Введи від 512 до 65536 МБ пам’яті з кроком 256.", "Enter 512 to 65536 MB of memory in steps of 256.");
+        Texts["CatalogInCart"] = ("У кошику", "In cart");
+        Texts["CatalogReplace"] = ("Замінити версію в кошику", "Replace version in cart");
+        Texts["CatalogSearching"] = ("Пошук…", "Searching…");
+        Texts["CatalogSearchOffline"] = ("Каталог недоступний офлайн.", "The catalog is unavailable offline.");
+        Texts["CatalogSearchFailed"] = ("Не вдалося отримати дані каталогу. Спробуй ще раз.", "Could not load catalog data. Try again.");
+        Texts["CatalogSearchEmpty"] = ("Нічого не знайдено.", "No results found.");
+        Texts["ContentProjectPage"] = ("Відкрити сторінку проєкту", "Open project page");
+        Texts["CartAddLocalDependency"] = ("Додати локальний JAR залежності", "Add a local dependency JAR");
+        Texts["PackCopyBasis"] = ("Взяти за основу", "Use as basis");
+        Texts["PackCopyPrepare"] = ("Підготувати узгоджену копію", "Prepare reconciled copy");
+        Texts["PackCopyCreate"] = ("Створити новий профіль", "Create new profile");
+        Texts["PackCopyHint"] = ("Основа визначає ціль і версії. Підготовка може завантажувати точні файли в кеш. Локальні JAR, необов’язкові файли та конфіги лишаються для ручного перегляду. Світи, акаунти й команди виключено.", "The basis sets the target and versions. Preparation may download exact files to the cache. Local JARs, optional files and configs require manual review. Worlds, accounts and commands are excluded.");
+        Texts["PackCopyConsent"] = ("Погоджую цей план створення нового профілю з указаних архівів.", "I approve this plan to create a new profile from these archives.");
+        Texts["PackCopyChecking"] = ("Перевіряємо джерела й байти файлів…", "Checking sources and file bytes…");
+        Texts["PackCopyTarget"] = ("Новий профіль {0} · Minecraft {1} · {2} {3}", "New profile {0} · Minecraft {1} · {2} {3}");
+        Texts["PackCopyAdd"] = ("Додати з другої збірки", "Add from the other pack");
+        Texts["PackCopyDeclared"] = ("Байти ще не перевірено", "Bytes not verified");
+        Texts["PackCopyChecked"] = ("Байти перевірено", "Bytes verified");
+        Texts["PackCopyConflict"] = ("Суперечливі метадані або цільові шляхи", "Conflicting metadata or destination paths");
+        Texts["PackCopyKeepConflict"] = ("Конфлікт · лишити файл основи", "Conflict · keep basis file");
+        Texts["PackCopyDuplicate"] = ("Дублікат · пропустити", "Duplicate · skip");
+        Texts["PackCopyManual"] = ("Переглянути вручну", "Review manually");
+        Texts["PackCopyOtherTarget"] = ("Інша ціль · переглянути вручну", "Different target · review manually");
+        Texts["PackCopyVerifyAgain"] = ("Перевірений файл змінився або зник. Підготуй план повторно.", "A verified file changed or disappeared. Prepare the plan again.");
         Texts["PackTitle"] = ("Імпорт модпака Modrinth", "Import Modrinth modpack");
         Texts["PackChoose"] = ("Обрати .mrpack…", "Choose .mrpack…");
         Texts["PackName"] = ("Назва нового профілю", "New profile name");

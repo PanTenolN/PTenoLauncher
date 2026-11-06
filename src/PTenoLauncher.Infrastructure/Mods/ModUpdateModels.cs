@@ -6,7 +6,8 @@ public sealed class ModUpdateException(string code, string detail = "") : Invali
 public sealed record ModFileState(string Path, string Sha256, string Sha512, long Size);
 public sealed record ModVersionPin(ModFileState File, CatalogModVersion? Provider);
 public sealed record ModPinSet(Guid ProfileId, IReadOnlyList<ModVersionPin> Pins, int Schema = 1);
-public sealed record ModSetState(GameProfile Profile, IReadOnlyList<ModFileState> Files, byte[]? Inventory, byte[]? Pins, byte[]? Epoch, string ContextHash);
+public sealed record ModSetState(GameProfile Profile, IReadOnlyList<ModFileState> Files, byte[]? Inventory, byte[]? Pins, byte[]? Epoch, string ContextHash,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] byte[]? Receipt = null);
 public sealed record ModUpdateRow(ModFileState File, CatalogModVersion? Current, CatalogModVersion? Available, bool Pinned, string? Note);
 public sealed record ModUpdateScan(string Fingerprint, IReadOnlyList<ModUpdateRow> Rows, IReadOnlyList<string> Findings, bool Cached, DateTimeOffset? MetadataAt);
 public sealed record ModUpdateRequest(string Path, string? VersionId = null, bool Remove = false);

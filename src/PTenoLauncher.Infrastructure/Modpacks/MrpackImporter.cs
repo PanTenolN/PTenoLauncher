@@ -7,7 +7,7 @@ using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
 namespace PTenoLauncher.Infrastructure.Modpacks;
 
-public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore store, VerifiedDownloader downloads, NetworkPolicy network)
+public sealed partial class MrpackImporter(LauncherPaths paths, SqliteLauncherStore store, VerifiedDownloader downloads, NetworkPolicy network)
 {
     public const string ReceiptName = "mrpack-import.json";
     public MrpackReader Reader { get; } = new(paths, network);
@@ -23,6 +23,7 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
         "local-minecraft-launcher" => "minecraft-launcher-target.json",
         ModrinthAppReader.SourceKind => "modrinth-app-target.json",
         CurseForgeAppReader.SourceKind => "curseforge-app-target.json",
+        ReconciledSourceKind => "reconciled-mrpack-plan.json",
         _ => "mrpack-index.json"
     };
     internal Action<string>? Fault { get; set; }
@@ -107,10 +108,11 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
         return await ImportPreparedAsync(fresh.Plan, progress, ct, fresh, true, VerifySource, metadata);
     }
     private async Task<MrpackImportResult> ImportPreparedAsync(MrpackPreview fresh, IProgress<DownloadProgress>? progress, CancellationToken ct, InstancePackPreview? instance = null,
-        bool gameContent = false, Func<CancellationToken, Task>? verifyInstance = null, byte[]? instanceMetadata = null)
+        bool gameContent = false, Func<CancellationToken, Task>? verifyInstance = null, byte[]? instanceMetadata = null,
+        Func<string, CancellationToken, Task>? copyPrepared = null, Guid? profileId = null)
     {
         if (!fresh.CanImport) throw new MrpackException(fresh.Blockers[0].Code, fresh.Blockers[0].Detail);
-        var p = new GameProfile(Guid.NewGuid(), fresh.ProfileName, fresh.Minecraft, fresh.Loader, 4096, null, DateTimeOffset.UtcNow);
+        var p = new GameProfile(profileId ?? Guid.NewGuid(), fresh.ProfileName, fresh.Minecraft, fresh.Loader, 4096, null, DateTimeOffset.UtcNow);
         using var profileLease = new ProfileUsage(paths).Acquire(p.Id);
         if (Directory.Exists(paths.Profile(p.Id)) || (await store.GetProfilesAsync(ct)).Any(x => x.Id == p.Id)) throw new MrpackException("PackConflict");
         if (new DriveInfo(Path.GetPathRoot(paths.Root)!).AvailableFreeSpace < fresh.Files.Sum(f => f.Size) * 3 + 64L * 1024 * 1024) throw new MrpackException("PackBudget");
@@ -119,25 +121,13 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
         var staged = Staging(p.Id); staged.CreateProfile(p);
         byte[] indexBytes;
         foreach (var f in fresh.Files.Where(f => f.Download is not null))
+            await VerifyDownloadAsync(f.Download!, progress, ct);
+        if (copyPrepared is not null)
         {
-            var d = f.Download!;
-            if (!await Reader.CachedAsync(d, ct))
-            {
-                if (network.Offline) throw new MrpackException("PackOfflineMissing", f.Path);
-                bool downloaded = false;
-                foreach (var url in d.Downloads)
-                {
-                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(TimeSpan.FromSeconds(60));
-                    try { await downloads.DownloadAsync(url, Reader.CachePath(d), d.Sha512, d.Size, "SHA512", progress, deadline.Token, DownloadSource.Mrpack); downloaded = true; break; }
-                    catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !ct.IsCancellationRequested) { }
-                    catch (UntrustedMrpackSourceException e) { throw new MrpackException("PackOrigin", f.Path + " [" + e.Host + "]", e); }
-                    catch (InvalidDataException e) { throw new MrpackException("PackIntegrity", f.Path, e); }
-                }
-                if (!downloaded) throw new MrpackException("PackDownload", f.Path);
-            }
-            if (!await Reader.CachedAsync(d, ct)) throw new MrpackException("PackIntegrity", f.Path);
+            indexBytes = instanceMetadata!;
+            await copyPrepared(staged.Game(p.Id), ct);
         }
-        if (instance is not null)
+        else if (instance is not null)
         {
             indexBytes = instanceMetadata ?? InstancePackReader.TargetBytes(instance);
             using var input = new InstanceSource(fresh.Archive, gameContent);
@@ -154,17 +144,11 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
             {
                 ct.ThrowIfCancellationRequested(); var target = SafePath.Join(staged.Game(p.Id), f.Path); Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 await using var input = f.Entry is { } entry ? (zip.GetEntry(entry) ?? throw new MrpackException("PackChanged")).Open() : File.OpenRead(Reader.CachePath(f.Download!));
-                await using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
-                {
-                    long copied = 0; var buffer = new byte[81920]; int count;
-                    while ((count = await input.ReadAsync(buffer, ct)) > 0)
-                    { if ((copied += count) > f.Size) throw new MrpackException("PackIntegrity", f.Path); await output.WriteAsync(buffer.AsMemory(0, count), ct); progress?.Report(new(f.Path, copied, f.Size)); }
-                    if (copied != f.Size) throw new MrpackException("PackIntegrity", f.Path); await output.FlushAsync(ct); output.Flush(true);
-                }
+                await CopyPayloadAsync(input, target, f.Path, f.Size, progress, ct);
                 if (f.Download is { } d && (!await VerifiedDownloader.VerifyAsync(target, d.Sha512, "SHA512", d.Size, ct) || !await VerifiedDownloader.VerifyAsync(target, d.Sha1, "SHA1", d.Size, ct))) throw new MrpackException("PackIntegrity", f.Path);
             }
         }
-        if (instance is null && await MrpackReader.HashFile(fresh.Archive, ct) != fresh.ArchiveSha256) throw new MrpackException("PackChanged");
+        if (instance is null && copyPrepared is null && await MrpackReader.HashFile(fresh.Archive, ct) != fresh.ArchiveSha256) throw new MrpackException("PackChanged");
         var gameFiles = await Inventory(staged.Game(p.Id), ct);
         var inspector = new LocalModManager(staged, store); var jars = new List<ModCartItem>();
         foreach (var file in gameFiles.Where(f => MrpackReader.RootJar(f.RelativePath)))
@@ -186,11 +170,55 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
         await AtomicFile.WriteAsync(SafePath.Join(staged.Profile(p.Id), ReceiptName), receiptBytes, ct);
         if (verifyInstance is not null) await verifyInstance(ct);
         else if (instance is not null && (await InstanceReader.PreviewAsync(fresh.Archive, instance.Request, ct)).Plan.Fingerprint != fresh.Fingerprint) throw new MrpackException("PackChanged");
-        journal = journal with { State = "Ready", Files = await Inventory(staged.Profile(p.Id), ct) };
+        journal = journal with { State = "Ready", Files = await Inventory(staged.Profile(p.Id), ct, p.Id) };
+        ct.ThrowIfCancellationRequested();
         await AtomicFile.WriteJsonAsync(Journal(p.Id), journal, ct); Fault?.Invoke("ready");
-        await Commit(journal, ct); return new(p, receipt);
+        await Commit(journal, copyPrepared is null ? ct : CancellationToken.None); return new(p, receipt);
     }
-    private static async Task<IReadOnlyList<InstalledFile>> Inventory(string root, CancellationToken ct)
+    private async Task VerifyDownloadAsync(MrpackDownload file, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        if (await Reader.CachedAsync(file, ct)) return;
+        if (network.Offline) throw new MrpackException("PackOfflineMissing", file.Path);
+        foreach (var url in file.Downloads)
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(60));
+            try
+            {
+                await downloads.DownloadAsync(url, Reader.CachePath(file), file.Sha512, file.Size, "SHA512", progress, deadline.Token, DownloadSource.Mrpack);
+                if (!await Reader.CachedAsync(file, ct)) throw new MrpackException("PackIntegrity", file.Path);
+                return;
+            }
+            catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException && !ct.IsCancellationRequested) { }
+            catch (UntrustedMrpackSourceException e) { throw new MrpackException("PackOrigin", file.Path + " [" + e.Host + "]", e); }
+            catch (InvalidDataException e) { throw new MrpackException("PackIntegrity", file.Path, e); }
+        }
+        throw new MrpackException("PackDownload", file.Path);
+    }
+    private static async Task CopyPayloadAsync(Stream input, string target, string path, long size,
+        IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        await using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920,
+            FileOptions.Asynchronous | FileOptions.WriteThrough);
+        await CopyPayloadAsync(input, output, path, size, progress, ct);
+    }
+    private static async Task CopyPayloadAsync(Stream input, FileStream output, string path, long size,
+        IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        long copied = 0;
+        var buffer = new byte[81920];
+        int count;
+        while ((count = await input.ReadAsync(buffer, ct)) > 0)
+        {
+            if ((copied += count) > size) throw new MrpackException("PackIntegrity", path);
+            await output.WriteAsync(buffer.AsMemory(0, count), ct);
+            progress?.Report(new(path, copied, size));
+        }
+        if (copied != size) throw new MrpackException("PackIntegrity", path);
+        await output.FlushAsync(ct);
+        output.Flush(true);
+    }
+    private static async Task<IReadOnlyList<InstalledFile>> Inventory(string root, CancellationToken ct, Guid? profile = null)
     {
         var result = new List<InstalledFile>();
         async Task Walk(string folder, int depth)
@@ -199,29 +227,34 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
             foreach (var f in Directory.EnumerateFileSystemEntries(folder))
             {
                 ct.ThrowIfCancellationRequested(); SafePath.RejectLinks(f);
+                if (depth == 0 && profile is { } id && Path.GetFileName(f) == LauncherPaths.IdentityFile(id) &&
+                    LauncherPaths.HasIdentity(root, id)) continue;
                 if (Directory.Exists(f)) await Walk(f, depth + 1);
                 else { if (result.Count >= MrpackReader.MaxFiles + 4) throw new MrpackException("PackBudget"); result.Add(new(Path.GetRelativePath(root, f).Replace('\\', '/'), await MrpackReader.HashFile(f, ct), "SHA256", new FileInfo(f).Length)); }
             }
         }
         await Walk(root, 0); return result.OrderBy(f => f.RelativePath, StringComparer.Ordinal).ToArray();
     }
-    private static async Task Verify(string root, IReadOnlyList<InstalledFile> expected, CancellationToken ct)
+    private static async Task Verify(string root, Guid id, IReadOnlyList<InstalledFile> expected, CancellationToken ct)
     {
         if (expected is null || expected.Count > MrpackReader.MaxFiles + 4) throw new MrpackException("PackInvalid");
         MrpackReader.PathsRule(expected.Select(f => (f.RelativePath, false)));
-        var actual = await Inventory(root, ct);
+        var actual = await Inventory(root, ct, id);
         if (JsonSerializer.Serialize(actual, AtomicFile.JsonOptions) != JsonSerializer.Serialize(expected, AtomicFile.JsonOptions)) throw new MrpackException("PackConflict");
     }
     private async Task Commit(MrpackJournal journal, CancellationToken ct)
     {
-        Validate(journal); var target = paths.ProfileFolderForCreation(journal.Profile); var stage = Staging(journal.Id).Profile(journal.Id);
+        Validate(journal); var stage = Staging(journal.Id).Profile(journal.Id);
         if (Directory.Exists(stage))
         {
+            var target = paths.Profile(journal.Id);
             if (Directory.Exists(target) || File.Exists(target)) throw new MrpackException("PackConflict");
-            await Verify(stage, journal.Files, ct); ct.ThrowIfCancellationRequested();
-            SafePath.RejectLinks(target); Directory.Move(stage, target); Fault?.Invoke("moved");
+            await Verify(stage, journal.Id, journal.Files, ct); ct.ThrowIfCancellationRequested();
+            try { paths.PlaceProfileDirectory(journal.Profile, stage); }
+            catch (IOException error) when (error.Message == "ContentCollision") { throw new MrpackException("PackConflict", "", error); }
+            Fault?.Invoke("moved");
         }
-        await Verify(target, journal.Files, ct);
+        await Verify(paths.Profile(journal.Id), journal.Id, journal.Files, ct);
         var receipt = await MrpackRequirements.ReadAsync(paths, journal.Profile, ct) ?? throw new MrpackException("PackInvalid");
         if (receipt.Id != journal.Id || receipt.Profile != journal.Profile) throw new MrpackException("PackConflict");
         await AtomicFile.WriteJsonAsync(Journal(journal.Id), journal with { State = "Moved" }, ct); Fault?.Invoke("before-database");
@@ -256,7 +289,7 @@ public sealed class MrpackImporter(LauncherPaths paths, SqliteLauncherStore stor
             using var profile = new ProfileUsage(paths).Acquire(id); new ProfileUsage(paths).CheckWorldLocks(id);
             var j = await ReadJournal(id, ct);
             if (j.State == "Preparing")
-            { if (Directory.Exists(paths.Profile(id)) || (await store.GetProfilesAsync(ct)).Any(p => p.Id == id)) throw new MrpackException("PackConflict"); await AtomicFile.WriteJsonAsync(Journal(id), j with { State = "Aborted" }, ct); }
+                await DiscardPreparingAsync(id);
             else await Commit(j, ct);
         }
     }

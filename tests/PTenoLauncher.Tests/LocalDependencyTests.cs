@@ -214,7 +214,7 @@ public sealed class LocalDependencyTests
         var local=Path.Combine(ws.Paths.Root,"extra.jar");
         SecurityAndModsTests.CreateJar(local,"extra", "{\"b\":\"*\"}");
         var plan=await f.Installer.PreviewLocalAsync(p,[await f.Input(),new(local,await f.Local.InspectAsync(local))]);
-        Assert.True(plan.CanInstall);Assert.Contains(plan.Warnings,w=>w.Contains("b"));
+        Assert.True(plan.CanInstall);Assert.Equal(2,f.Downloads);Assert.Empty(Directory.GetFiles(Mods(ws,p)));
         await f.Installer.InstallLocalAsync(p,plan,true,true);
         Assert.Equal(4,Directory.GetFiles(Mods(ws,p)).Length);Assert.Equal(2,f.Downloads);
     }

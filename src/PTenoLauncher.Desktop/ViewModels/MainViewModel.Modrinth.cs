@@ -42,6 +42,12 @@ public sealed partial class MainViewModel
     public string CartConflict => installConflict?.Message ??
         string.Join(Environment.NewLine, (combinedPlan?.Conflicts ?? []).Take(8).Select(c => c.Summary));
     public bool HasCartConflict => CartConflict.Length != 0;
+    public string CartDependencyFindings => combinedPlan is { } plan
+        ? string.Join(Environment.NewLine, (plan.ManualOnly ? plan.Warnings : plan.Blockers.Concat(plan.Remote.Resolution.Blockers)).Take(20))
+        : "";
+    public IReadOnlyList<ModRequirement> CartMissingRequirements => SelectedProfile?.Loader == ModLoader.Fabric && !Offline && !ManualLocalOnly
+        ? combinedPlan?.MissingRequirements ?? [] : [];
+    public bool HasCartMissingRequirements => CartMissingRequirements.Count > 0;
     public IEnumerable<ModPlanEntry> CartRequired => CartDependencies.Where(e => !IsSelectedOptional(e));
     public IEnumerable<ModPlanEntry> CartOptionalFiles => CartDependencies.Where(IsSelectedOptional);
     private IEnumerable<ModPlanEntry> CartDependencies
@@ -81,7 +87,15 @@ public sealed partial class MainViewModel
     public bool CanCommitCatalog => IsIdle && HasCurrentInstallPlan;
     private bool HasCurrentInstallPlan => installConflict is null && combinedPlan?.CanInstall == true &&
         SelectedProfile == reviewedModProfile && (!NeedsUnknownAcceptance || UnknownSourceAccepted);
-    public bool CanAddCatalogVersion => CanUseOnlineCatalog && SelectedRemoteVersion is not null;
+    private CatalogPick? CurrentCatalogPick => remoteRoots.FirstOrDefault(pick => pick.Request.ProjectId == SelectedRemoteVersion?.ProjectId);
+    public bool CatalogVersionQueued => CurrentCatalogPick is { } pick && pick.Request.VersionId == SelectedRemoteVersion?.Id && !manualLocalOnly;
+    public bool CanAddCatalogVersion => CanUseOnlineCatalog && SelectedRemoteVersion is not null && !CatalogVersionQueued;
+    public string CatalogAddLabel => TextCatalog.Get(CatalogVersionQueued ? "CatalogInCart" :
+        CurrentCatalogPick is not null && !manualLocalOnly ? "CatalogReplace" : "CatalogAdd");
+    public async Task RemoveSelectedCatalogVersionAsync()
+    {
+        if (CatalogVersionQueued && CurrentCatalogPick is { } pick) await RemoveCatalogPickAsync(pick);
+    }
     public string CatalogVersionDetails => SelectedRemoteVersion is { } v
         ? $"{string.Join(", ", v.GameVersions)} · {string.Join(", ", v.Loaders)} · {v.File.Size / 1048576.0:0.##} MB\n" +
             string.Join("\n", v.Dependencies.Where(d => d.Kind is "required" or "optional").GroupBy(d => d.Kind)
@@ -93,7 +107,13 @@ public sealed partial class MainViewModel
         set { if (Set(ref remoteProject, value)) { RemoteVersions.Clear(); SelectedRemoteVersion = null; Changed(nameof(HasRemoteProject)); } }
     }
     public bool HasRemoteProject => SelectedRemoteProject is not null;
-    public CatalogModVersion? SelectedRemoteVersion { get => remoteVersion; set { if (Set(ref remoteVersion, value)) { Changed(nameof(CatalogVersionDetails)); Changed(nameof(CanAddCatalogVersion)); } } }
+    public CatalogModVersion? SelectedRemoteVersion { get => remoteVersion; set { if (Set(ref remoteVersion, value)) { Changed(nameof(CatalogVersionDetails)); RefreshCatalogButton(); } } }
+    private void RefreshCatalogButton()
+    {
+        Changed(nameof(CatalogVersionQueued));
+        Changed(nameof(CanAddCatalogVersion));
+        Changed(nameof(CatalogAddLabel));
+    }
     public void ClearRemotePlan()
     {
         remoteRoots.Clear(); manualLocalOnly = false; Changed(nameof(ManualLocalOnly)); InvalidateModPlan();
@@ -103,7 +123,10 @@ public sealed partial class MainViewModel
         RemoteQuery = "";
         RemoteSearchResults.Clear();
         SelectedRemoteProject = null;
+        CatalogSearchStatus = "";
     }
+    private string catalogSearchStatus = "";
+    public string CatalogSearchStatus { get => Offline ? TextCatalog.Get("CatalogSearchOffline") : catalogSearchStatus; private set => Set(ref catalogSearchStatus, value); }
     public Task SearchRemoteAsync(CancellationToken request = default) => RunAsync(async ct =>
     {
         var profile = RequireProfile();
@@ -113,20 +136,38 @@ public sealed partial class MainViewModel
         services.Modrinth.BeginOperation();
         var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(term => term.Equals("kothlin", StringComparison.OrdinalIgnoreCase) ? "kotlin" : term).ToArray();
-        var hits = await services.Modrinth.SearchAsync(string.Join(' ', terms), profile.MinecraftVersion, profile.Loader, linked.Token);
+        CatalogSearchStatus = TextCatalog.Get("CatalogSearching");
         int Score(CatalogSearchHit hit) => terms.Count(term => hit.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             hit.Slug.Contains(term, StringComparison.OrdinalIgnoreCase));
-        if (terms.Length > 1 && !hits.Any(hit => Score(hit) == terms.Length))
+        bool Current() => !linked.IsCancellationRequested && !Offline && SelectedProfile == profile && RemoteQuery.Trim() == query;
+        IReadOnlyList<CatalogSearchHit> hits;
+        try
         {
-            var anchor = terms.OrderByDescending(term => term.Length).First();
-            var fallback = await services.Modrinth.SearchAsync(anchor, profile.MinecraftVersion, profile.Loader, linked.Token);
-            hits = hits.Concat(fallback).DistinctBy(hit => hit.Id).ToArray();
+            hits = await services.Modrinth.SearchAsync(string.Join(' ', terms), profile.MinecraftVersion, profile.Loader, linked.Token);
+            if (terms.Length > 1 && !hits.Any(hit => Score(hit) == terms.Length))
+            {
+                var anchor = terms.OrderByDescending(term => term.Length).First();
+                var fallback = await services.Modrinth.SearchAsync(anchor, profile.MinecraftVersion, profile.Loader, linked.Token);
+                hits = hits.Concat(fallback).DistinctBy(hit => hit.Id).ToArray();
+            }
         }
-        if (linked.IsCancellationRequested || Offline || SelectedProfile != profile || RemoteQuery.Trim() != query) return;
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { return; }
+        catch (Exception error) when (!ct.IsCancellationRequested && error is HttpRequestException or IOException or InvalidDataException or
+            InvalidOperationException or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            if (!Current()) return;
+            RemoteSearchResults.Clear();
+            SelectedRemoteProject = null;
+            CatalogSearchStatus = TextCatalog.Get("CatalogSearchFailed");
+            services.Log.Error("catalog.search", error);
+            return;
+        }
+        if (!Current()) return;
         hits = hits.OrderByDescending(Score).ToArray();
         RemoteSearchResults.Clear(); foreach (var hit in hits) RemoteSearchResults.Add(hit);
         SelectedRemoteProject = RemoteSearchResults.FirstOrDefault();
         Status = TextCatalog.Format("SearchCount", hits.Count) + (services.Modrinth.UsedCache ? TextCatalog.Get("Message043") : ".");
+        CatalogSearchStatus = hits.Count == 0 ? TextCatalog.Get("CatalogSearchEmpty") : Status;
     });
     public Task LoadRemoteVersionsAsync() => RunAsync(async ct =>
     {
@@ -148,7 +189,11 @@ public sealed partial class MainViewModel
     }
     private void RefreshCartPresentation()
     {
+        RefreshCatalogButton();
         Changed(nameof(CartNextStep));
+        Changed(nameof(CartDependencyFindings));
+        Changed(nameof(CartMissingRequirements));
+        Changed(nameof(HasCartMissingRequirements));
         Changed(nameof(CatalogPicks));
         Changed(nameof(CatalogDoneLabel));
         Changed(nameof(CatalogInstallLabel));
@@ -291,6 +336,7 @@ public sealed partial class MainViewModel
             CartSummary = "";
         }
         else ClearInstallationCart();
+        await InvalidateWorkspaceModsAsync(profile.Id);
         Status = TextCatalog.Get("Message062");
     }
     public Task InstallRemoteAsync() => RunAsync(InstallCombinedAsync);

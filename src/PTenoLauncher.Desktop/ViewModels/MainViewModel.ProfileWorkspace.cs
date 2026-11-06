@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using PTenoLauncher.Core;
 using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Infrastructure.Storage;
@@ -15,7 +16,6 @@ public sealed partial class MainViewModel
     private LauncherPage workspaceReturnPage;
     private Guid? workspaceReturnProfile;
     public bool IsProfileWorkspace => Page == LauncherPage.ProfileWorkspace;
-    public bool HasModsWorkspace => IsMods || IsProfileWorkspace;
     private ProfileSection workspaceSection;
     public ProfileSection WorkspaceSection
     {
@@ -27,40 +27,39 @@ public sealed partial class MainViewModel
     public bool WorkspaceVersions => IsProfileWorkspace && WorkspaceSection == ProfileSection.Versions;
     public bool WorkspaceMods => IsProfileWorkspace && WorkspaceSection == ProfileSection.Mods;
     public bool WorkspaceModTableVisible => WorkspaceMods && CanManageMods;
-    public bool IsGlobalMods => Page == LauncherPage.Mods && CanManageMods;
     public bool CanUseOnlineCatalog => IsIdle && !Offline && CanManageMods;
     public bool WorkspaceConsole => IsProfileWorkspace && WorkspaceSection == ProfileSection.Console;
     public bool WorkspaceFolders => IsProfileWorkspace && WorkspaceSection == ProfileSection.Folders;
     public bool CanLeaveWorkspace => IsIdle || IsGameLaunchActive;
     public ObservableCollection<string> WorkspaceInstalledMods { get; } = [];
     public ObservableCollection<WorkspaceModRow> WorkspaceModRows { get; } = [];
-    private WorkspaceModRow[] modMetadata = [];
-    private Guid? modMetadataProfile;
+    private WorkspaceModRow[] displayedModRows = [];
     private string workspaceModQuery = "";
-    private bool modDescending;
     public string WorkspaceModQuery { get => workspaceModQuery; set { if (Set(ref workspaceModQuery, value)) FilterWorkspaceModRows(); } }
-    public void SortWorkspaceMods() { modDescending = !modDescending; FilterWorkspaceModRows(); }
     private void FilterWorkspaceModRows()
     {
-        var metadata = modMetadataProfile == WorkspaceProfileId ? modMetadata.ToDictionary(m => m.File, StringComparer.OrdinalIgnoreCase) : [];
-        var rows = WorkspaceInstalledMods.Select(file => metadata.GetValueOrDefault(file) ??
-            new(file, file, "—", "—", file.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase) ? "○" : "✓"))
-            .Where(row => row.Name.Contains(WorkspaceModQuery ?? "", StringComparison.OrdinalIgnoreCase) ||
-                row.File.Contains(WorkspaceModQuery ?? "", StringComparison.OrdinalIgnoreCase));
+        var rows = displayedModRows.Where(row => row.Name.Contains(WorkspaceModQuery ?? "", StringComparison.OrdinalIgnoreCase) ||
+            row.File.Contains(WorkspaceModQuery ?? "", StringComparison.OrdinalIgnoreCase));
         WorkspaceModRows.Clear();
-        foreach (var row in modDescending ? rows.OrderByDescending(r => r.Name, StringComparer.OrdinalIgnoreCase) :
-            rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)) WorkspaceModRows.Add(row);
+        var alphabetical = StringComparer.Create(CultureInfo.GetCultureInfo(TextCatalog.Language), ignoreCase: true);
+        foreach (var row in rows.OrderBy(r => r.Name, alphabetical)
+            .ThenBy(r => r.File, StringComparer.OrdinalIgnoreCase))
+            WorkspaceModRows.Add(row);
     }
-    public Task InspectWorkspaceModsAsync() => RunAsync(async ct =>
+
+    private async Task<WorkspaceSnapshot> ReadWorkspaceModsAsync(Guid id, ModLoader loader)
     {
-        var id = WorkspaceProfileId;
-        if (id is null || !WorkspaceModTableVisible) return;
-        RefreshWorkspaceMods();
-        var entries = new List<WorkspaceModRow>();
+        var folder = SafePath.Join(services.Paths.Game(id), "mods");
+        var unknownShader = TextCatalog.Get("ContentShaderComponentUnknown");
+        if (!Directory.Exists(folder)) return new([], [], unknownShader);
+        var entries = Directory.EnumerateFiles(folder)
+            .Where(file => (file.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase)) &&
+                (File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0)
+            .Order(StringComparer.OrdinalIgnoreCase).Take(1000).Select(file => Path.GetFileName(file)!).ToArray();
         IReadOnlyDictionary<string, InstalledModFile> inventory;
         try
         {
-            var saved = await new ModInventoryStore(services.Paths).ReadAsync(id.Value, ct);
+            var saved = await new ModInventoryStore(services.Paths).ReadAsync(id);
             inventory = (saved?.Files ?? []).ToDictionary(file => file.RelativePath, StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception error) when (error is IOException or InvalidDataException or System.Text.Json.JsonException)
@@ -68,25 +67,34 @@ public sealed partial class MainViewModel
             services.Log.Error("workspace.mod.inventory", error);
             inventory = new Dictionary<string, InstalledModFile>();
         }
-        foreach (var file in WorkspaceInstalledMods.Where(f => f.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)).Take(200).ToArray())
+        var rows = new List<WorkspaceModRow>(entries.Length);
+        string? shader = null;
+        var inspected = 0;
+        foreach (var file in entries)
         {
-            ct.ThrowIfCancellationRequested();
-            try
+            var disabled = file.EndsWith(".disabled", StringComparison.OrdinalIgnoreCase);
+            var row = new WorkspaceModRow(file, file, "-", "-", disabled ? "✗" : "✓");
+            if (!disabled && inspected++ < 200)
             {
-                var mod = await services.Mods.InspectAsync(SafePath.Join(services.Paths.Game(id.Value), "mods/" + file), ct);
-                var origin = inventory.TryGetValue("mods/" + file, out var tracked) && tracked.Sha256.Equals(mod.Sha256, StringComparison.OrdinalIgnoreCase)
-                    ? tracked.Origin : null;
-                var source = origin switch { "modrinth" => "Modrinth", "local-modrinth" => TextCatalog.Get("Message048"),
-                    "local" => TextCatalog.Get("Message047"), _ => "—" };
-                entries.Add(new(file, mod.Name ?? file, mod.Version ?? "—", source, "✓"));
+                try
+                {
+                    var mod = await services.Mods.InspectAsync(SafePath.Join(folder, file));
+                    var origin = inventory.TryGetValue("mods/" + file, out var tracked) && tracked.Sha256.Equals(mod.Sha256, StringComparison.OrdinalIgnoreCase)
+                        ? tracked.Origin : null;
+                    var source = origin switch { "modrinth" => "Modrinth", "local-modrinth" => TextCatalog.Get("Message048"),
+                        "local" => TextCatalog.Get("Message047"), _ => "-" };
+                    row = row with { Name = mod.Name ?? file, Version = mod.Version ?? "-", Source = source };
+                    if (shader is null && loader != ModLoader.Vanilla && mod.Loader == loader && mod.Id is "iris" or "oculus" or "optifine")
+                        shader = TextCatalog.Format("ContentShaderComponentFound", mod.Name ?? mod.Id, mod.Version ?? "");
+                }
+                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or
+                    InvalidOperationException or System.Text.Json.JsonException)
+                { services.Log.Error("workspace.mod.metadata", error); }
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
-            { services.Log.Error("workspace.mod.metadata", ex); }
+            rows.Add(row);
         }
-        if (WorkspaceProfileId != id) return;
-        modMetadataProfile = id; modMetadata = entries.ToArray();
-        FilterWorkspaceModRows();
-    });
+        return new(rows.ToArray(), [], shader ?? unknownShader);
+    }
     public string WorkspaceGamePath => WorkspaceProfileId is { } id ? services.Paths.Game(id) : "";
     public string WorkspaceProfilePath => WorkspaceProfileId is { } id ? services.Paths.Profile(id) : "";
     private string? workspaceResolvedLoader;
@@ -115,6 +123,7 @@ public sealed partial class MainViewModel
         Page = LauncherPage.ProfileWorkspace;
         RefreshWorkspaceView();
         _ = LoadWorkspaceVersionAsync(profile);
+        _ = LoadWorkingSummaryAsync(profile.Id);
     }
 
     public void BackFromProfileWorkspace()
@@ -150,35 +159,19 @@ public sealed partial class MainViewModel
     {
         if (WorkspaceProfileId is null) return;
         WorkspaceSection = section;
-        if (section == ProfileSection.Mods) RefreshWorkspaceMods();
     }
 
     private void RefreshWorkspaceView()
     {
-        foreach (var name in new[] { nameof(IsProfileWorkspace), nameof(HasModsWorkspace), nameof(WorkspaceSettings),
-            nameof(WorkspaceOverview), nameof(WorkspaceVersions), nameof(WorkspaceMods), nameof(WorkspaceConsole), nameof(WorkspaceFolders), nameof(IsMods), nameof(IsGlobalMods), nameof(WorkspaceModTableVisible),
+        foreach (var name in new[] { nameof(IsProfileWorkspace), nameof(WorkspaceSettings),
+            nameof(WorkspaceOverview), nameof(WorkspaceVersions), nameof(WorkspaceMods), nameof(WorkspaceConsole), nameof(WorkspaceFolders), nameof(WorkspaceModTableVisible),
             nameof(WorkspaceGamePath), nameof(WorkspaceProfilePath), nameof(WorkspaceVersion), nameof(PageTitle),
             nameof(WorkspaceResourcePacks), nameof(WorkspaceShaders), nameof(WorkspaceWorlds), nameof(WorkspaceContentVisible),
             nameof(WorkspaceContentHint), nameof(WorkspaceCanImportPack) })
             Changed(name);
-    }
-
-    private void RefreshWorkspaceMods()
-    {
-        if (!WorkspaceMods || WorkspaceProfileId is not { } id) return;
-        WorkspaceInstalledMods.Clear();
-        try
-        {
-            var mods = SafePath.Join(services.Paths.Game(id), "mods");
-            if (!Directory.Exists(mods)) { FilterWorkspaceModRows(); return; }
-            foreach (var file in Directory.EnumerateFiles(mods).Where(file =>
-                (file.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase)) &&
-                (File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0).Order(StringComparer.OrdinalIgnoreCase).Take(1000))
-                WorkspaceInstalledMods.Add(Path.GetFileName(file));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        { Status = ex.Message; }
-        FilterWorkspaceModRows();
+        PresentWorkspaceCache();
+        Changed(nameof(CanMarkWorking));
+        Changed(nameof(WorkingSummary));
     }
 
     internal string WorkspaceFolder(string kind)

@@ -2,8 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using System.Diagnostics;
 using PTenoLauncher.Core;
@@ -21,28 +21,26 @@ public sealed partial class ModCatalogDialog : Window
     private bool closed;
     private bool reviewing;
     private string? addAfterLoading;
+    private ModRequirement? manualRequirement;
     private CancellationTokenSource? searchDelay;
-    private readonly CancellationTokenSource iconLifetime = new();
-    private readonly Dictionary<CatalogSearchHit, Task<Bitmap?>> icons = [];
+    private CatalogIconCache? icons;
     public ModCatalogDialog() => InitializeComponent();
     public ModCatalogDialog(MainViewModel vm, GameProfile profile, bool review = false) : this()
     {
         this.vm = vm;
         this.profile = profile;
+        icons = new(vm.LoadCatalogIconAsync);
         if (!review && !vm.Offline) vm.ResetRemoteSearch();
         DataContext = vm;
         vm.PropertyChanged += ViewModelChanged;
         vm.UnknownSourceAccepted = false;
-        SetStep(review || vm.Offline);
+        SetStep(review);
         Closing += (_, e) => { if (vm.IsBusy) e.Cancel = true; };
         Closed += (_, _) =>
         {
             closed = true;
             searchDelay?.Cancel();
-            iconLifetime.Cancel();
-            foreach (var icon in icons.Values)
-                if (icon.IsCompletedSuccessfully) icon.Result?.Dispose();
-            iconLifetime.Dispose();
+            icons.Dispose();
             vm.PropertyChanged -= ViewModelChanged;
             vm.UnknownSourceAccepted = false;
         };
@@ -57,36 +55,7 @@ public sealed partial class ModCatalogDialog : Window
         };
     }
     private void CatalogIconAttached(object? sender, VisualTreeAttachmentEventArgs e) => CatalogIconChanged(sender, e);
-    private async void CatalogIconChanged(object? sender, EventArgs e)
-    {
-        if (sender is not Image image) return;
-        image.Source = null;
-        if (closed || vm is null || image.DataContext is not CatalogSearchHit hit || hit.IconUrl is null) return;
-        if (!icons.TryGetValue(hit, out var pending))
-        {
-            if (icons.Count >= 80) return;
-            icons.Add(hit, pending = LoadIconAsync(hit, iconLifetime.Token));
-        }
-        var bitmap = await pending;
-        if (!closed && Equals(image.DataContext, hit)) image.Source = bitmap;
-    }
-    private async Task<Bitmap?> LoadIconAsync(CatalogSearchHit hit, CancellationToken ct)
-    {
-        try
-        {
-            var bytes = await vm.LoadCatalogIconAsync(hit, ct);
-            if (closed || bytes is null) return null;
-            using var data = SkiaSharp.SKData.CreateCopy(bytes);
-            using var codec = SkiaSharp.SKCodec.Create(data);
-            if (codec is null || codec.Info.Width is < 1 or > 512 || codec.Info.Height is < 1 or > 512) return null;
-            using var stream = new MemoryStream(bytes);
-            return Bitmap.DecodeToWidth(stream, 28);
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or HttpRequestException or OperationCanceledException or ArgumentException or InvalidOperationException)
-        {
-            return null;
-        }
-    }
+    private async void CatalogIconChanged(object? sender, EventArgs e) { if (sender is Image image && icons is not null) await icons.ShowAsync(image); }
     private void ViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.SelectedRemoteProject))
@@ -109,7 +78,7 @@ public sealed partial class ModCatalogDialog : Window
             if (addAfterLoading == project.Id)
             {
                 addAfterLoading = null;
-                if (vm.LastOperationSucceeded) vm.AddRemote();
+                if (vm.LastOperationSucceeded) await AddSelectedAsync();
             }
         }
     });
@@ -126,8 +95,6 @@ public sealed partial class ModCatalogDialog : Window
         searchDelay = request;
         try
         {
-            var query = vm.RemoteQuery.Trim();
-            if (!immediate && query.Length == 1) return;
             if (!immediate) await Task.Delay(350, request.Token);
             while (vm.IsBusy && !vm.Offline) await Task.Delay(30, request.Token);
             if (!closed && !reviewing && vm.CanUseOnlineCatalog && Current())
@@ -154,18 +121,36 @@ public sealed partial class ModCatalogDialog : Window
     }
     private async void Search(object? sender, RoutedEventArgs e) => await QueueSearchAsync(immediate: true);
     private void Versions(object? sender, RoutedEventArgs e) { loadedProject = null; QueueVersions(); }
-    private void Add(object? sender, RoutedEventArgs e) { if (Current()) vm.AddRemote(); }
-    private void AddDoubleTapped(object? sender, TappedEventArgs e)
+    private async void Add(object? sender, RoutedEventArgs e) => await AddSelectedAsync();
+    private async Task AddSelectedAsync()
+    {
+        if (!Current() || !vm.CanAddCatalogVersion) return;
+        if (manualRequirement is { } needed && vm.SelectedRemoteVersion is { } version)
+        {
+            await vm.RunAsync(async ct =>
+            {
+                if (!await vm.Services.RemoteMods.VerifyFabricProviderAsync(profile, version, needed, ct))
+                    throw new InvalidOperationException(TextCatalog.Get("CartProviderMismatch") + " " + needed.Id + " " +
+                        string.Join(" || ", needed.Alternatives));
+            });
+            if (!vm.LastOperationSucceeded || vm.SelectedRemoteVersion != version || !Current()) return;
+            manualRequirement = null;
+        }
+        vm.AddRemote();
+    }
+    private async void RemoveSelected(object? sender, RoutedEventArgs e) { if (Current()) await vm.RemoveSelectedCatalogVersionAsync(); }
+    private async void AddDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (e.Source is not Visual source || (source as ListBoxItem ?? source.FindAncestorOfType<ListBoxItem>())?.DataContext is not CatalogSearchHit hit ||
             vm.SelectedRemoteProject != hit || !Current()) return;
-        if (vm.CanAddCatalogVersion) vm.AddRemote();
+        e.Handled = true;
+        if (vm.CatalogVersionQueued) return;
+        if (vm.CanAddCatalogVersion) await AddSelectedAsync();
         else
         {
             addAfterLoading = hit.Id;
             if (vm.IsIdle) { loadedProject = null; QueueVersions(); }
         }
-        e.Handled = true;
     }
     private async void OpenProject(object? sender, RoutedEventArgs e)
     {
@@ -182,6 +167,7 @@ public sealed partial class ModCatalogDialog : Window
     {
         if (!Current() || !vm.IsIdle || !vm.HasCatalogSelection) return;
         searchDelay?.Cancel();
+        manualRequirement = null;
         SetStep(true);
         if (CatalogBack.IsVisible) CatalogBack.Focus();
         await vm.ReviewCartAsync();
@@ -193,6 +179,15 @@ public sealed partial class ModCatalogDialog : Window
         CatalogQuery.Focus();
         QueueVersions();
     }
+    private async void FindManualProvider(object? sender, RoutedEventArgs e)
+    {
+        if (!Current() || !vm.IsIdle || vm.Offline || CartMissingProvider.SelectedItem is not ModRequirement requirement) return;
+        manualRequirement = requirement;
+        SetStep(false);
+        CatalogQuery.Text = requirement.Id;
+        CatalogQuery.Focus();
+        await QueueSearchAsync(immediate: true);
+    }
     private async void RemoveCatalog(object? sender, RoutedEventArgs e)
     {
         if (Current() && sender is Button { DataContext: MainViewModel.CatalogPick pick }) await vm.RemoveCatalogPickAsync(pick);
@@ -200,6 +195,19 @@ public sealed partial class ModCatalogDialog : Window
     private async void RemoveLocal(object? sender, RoutedEventArgs e)
     {
         if (Current() && sender is Button { DataContext: ModCartItem item }) await vm.RemoveLocalPickAsync(item);
+    }
+    private async void AddLocalDependency(object? sender, RoutedEventArgs e)
+    {
+        if (!Current() || !vm.IsIdle) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new()
+        {
+            Title = TextCatalog.Get("CartAddLocalDependency"), AllowMultiple = true,
+            FileTypeFilter = [new("Minecraft JAR") { Patterns = ["*.jar"] }]
+        });
+        var paths = files.Select(file => file.TryGetLocalPath()).OfType<string>().ToArray();
+        if (paths.Length == 0 || !Current()) return;
+        await vm.AddModsAsync(paths);
+        if (vm.LastOperationSucceeded) await vm.ResolveCartAsync();
     }
     private async void ResolveModCart(object? sender, RoutedEventArgs e) { if (Current()) await vm.ResolveCartAsync(); }
     private async void ClearOptionalSelection(object? sender, RoutedEventArgs e) { if (Current()) await vm.ClearOptionalAsync(); }

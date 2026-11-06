@@ -4,8 +4,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path,PurePosixPath
 root=Path(__file__).resolve().parents[1]
 version=ET.parse(root/"Directory.Build.props").findtext("PropertyGroup/Version")
-artifacts=root/"artifacts"/version
-parser=argparse.ArgumentParser();parser.add_argument("--smoke",action="store_true");args=parser.parse_args()
+parser=argparse.ArgumentParser()
+parser.add_argument("--smoke",action="store_true")
+parser.add_argument("--artifacts",type=Path,default=root/"artifacts"/version)
+parser.add_argument("--smoke-root",type=Path,default=root/".local")
+args=parser.parse_args()
+artifacts=args.artifacts
 records=[]
 for line in (artifacts/"SHA256SUMS.txt").read_text(encoding="utf-8-sig").splitlines():
     if not line.strip():continue
@@ -57,7 +61,7 @@ portable_smoke=None
 if args.smoke:
     if os.name!="nt":raise RuntimeError("Native portable smoke requires Windows")
     if portable_name is None:raise RuntimeError("Missing portable archive")
-    parent=root/".local"
+    parent=args.smoke_root
     parent.mkdir(exist_ok=True)
     if parent.resolve(strict=True)!=parent or parent.is_symlink() or parent.is_junction():
         raise RuntimeError("Portable smoke parent is redirected")
@@ -69,11 +73,14 @@ if args.smoke:
     try:
         with zipfile.ZipFile(artifacts/portable_name) as archive:
             archive.extractall(portable_directory)
-        child=subprocess.run([str(portable_directory/"PTenoLauncher.exe"),"--smoke-test"],cwd=root,capture_output=True,text=True,timeout=60)
+        launcher=portable_directory/"PTenoLauncher.exe"
+        child=subprocess.run([str(launcher),"--smoke-test","--skip-update-check"],cwd=portable_directory,capture_output=True,text=True,timeout=60)
         if child.returncode:raise RuntimeError("Portable exited with "+str(child.returncode))
         marker=(portable_directory/"portable-data/gui-smoke.txt").read_text(encoding="utf8")
         if "Window opened" not in marker or "initialized=True" not in marker:raise RuntimeError("Portable did not initialize")
-        portable_smoke={"exitCode":child.returncode,"marker":marker,"directory":str(portable_directory)}
+        portable_smoke={"exitCode":child.returncode,"marker":marker,"directory":str(portable_directory),
+                        "exeSha256":hashlib.sha256(launcher.read_bytes()).hexdigest(),
+                        "appSha256":hashlib.sha256((portable_directory/"PTenoLauncher.dll").read_bytes()).hexdigest()}
     finally:
         if portable_directory.resolve(strict=True)!=portable_directory or ownership.is_symlink() or ownership.read_text(encoding="ascii")!=run:
             raise RuntimeError("Portable smoke ownership check failed")

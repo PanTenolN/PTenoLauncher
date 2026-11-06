@@ -1,17 +1,21 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="PTenoLauncher.Desktop.Dialogs.PackCompareDialog" Title="{DynamicResource Text.PackCompare}"
         Width="960" Height="630" MinWidth="590" MinHeight="430" WindowStartupLocation="CenterOwner">
-  <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
-    <StackPanel Spacing="8">
+  <Grid Margin="16" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="10">
+    <StackPanel Spacing="8" IsEnabled="{Binding IsIdle}">
       <TextBlock Text="{DynamicResource Text.PackCompareHint}" TextWrapping="Wrap"/>
       <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
         <StackPanel Spacing="5">
           <Button Content="{DynamicResource Text.PackCompareLeft}" Tag="left" Click="Choose"/>
           <TextBlock Name="LeftSummary" TextWrapping="Wrap"/>
+          <RadioButton Name="LeftBasis" GroupName="CopyBasis" IsEnabled="False" IsCheckedChanged="BasisChanged"
+                       Content="{DynamicResource Text.PackCopyBasis}"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Spacing="5">
           <Button Content="{DynamicResource Text.PackCompareRight}" Tag="right" Click="Choose"/>
           <TextBlock Name="RightSummary" TextWrapping="Wrap"/>
+          <RadioButton Name="RightBasis" GroupName="CopyBasis" IsEnabled="False" IsCheckedChanged="BasisChanged"
+                       Content="{DynamicResource Text.PackCopyBasis}"/>
         </StackPanel>
       </Grid>
     </StackPanel>
@@ -25,7 +29,18 @@
         </Grid>
       </DataTemplate></ListBox.ItemTemplate>
     </ListBox>
-    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+    <StackPanel Grid.Row="3" Spacing="5" IsEnabled="{Binding IsIdle}">
+      <TextBlock Text="{DynamicResource Text.PackCopyHint}" TextWrapping="Wrap"/>
+      <CheckBox Name="CopyConsent" IsVisible="False" IsCheckedChanged="ConsentChanged">
+        <TextBlock Text="{DynamicResource Text.PackCopyConsent}" TextWrapping="Wrap"/>
+      </CheckBox>
+      <WrapPanel Orientation="Horizontal">
+        <Button Name="PrepareCopyButton" Margin="0,0,8,0" IsEnabled="False"
+                Content="{DynamicResource Text.PackCopyPrepare}" Click="PrepareCopy"/>
+        <Button Name="CreateCopyButton" IsEnabled="False" Content="{DynamicResource Text.PackCopyCreate}" Click="CreateCopy"/>
+      </WrapPanel>
+    </StackPanel>
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
       <TextBlock Name="CompareStatus" TextWrapping="Wrap"/>
       <Button Grid.Column="1" Content="{DynamicResource Text.Cancel}" Command="{Binding CancelCommand}" IsVisible="{Binding CanCancelOperation}"/>
       <Button Grid.Column="2" Content="{DynamicResource Text.Close}" Click="CloseWindow" IsEnabled="{Binding IsIdle}" IsCancel="True"/>

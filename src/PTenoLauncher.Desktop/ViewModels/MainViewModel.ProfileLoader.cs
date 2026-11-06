@@ -38,16 +38,31 @@ public sealed partial class MainViewModel
         set { if (Set(ref editorLoaderVersion, value)) { RefreshProfileFields(); Changed(nameof(SelectedEditorLoaderOption)); } }
     }
 
-    public bool MissingProfileName => string.IsNullOrWhiteSpace(ProfileName);
-    public bool MissingProfileMinecraft => !HasVersionChoice;
-    public bool MissingProfileMemory => string.IsNullOrWhiteSpace(Memory);
-    public bool MissingProfileLoaderVersion => SelectedProfile is null && HasEditorLoader && string.IsNullOrWhiteSpace(EditorLoaderVersion);
+    private bool validationAttempted;
+    public bool MissingProfileName => ProfileName.Trim().Length is 0 or > 80 || ProfileName.Trim().Any(char.IsControl);
+    public bool MissingProfileMinecraft => !HasVersionChoice || VersionId.Trim().Length > 100 ||
+        VersionId.Trim().Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-' or '_'));
+    public bool MissingProfileMemory => !int.TryParse(Memory, out var ram) || ram is < 512 or > 65536 || ram % 256 != 0;
+    public bool MissingProfileLoaderVersion => HasEditorLoader && (EditorLoaderVersion is { } version
+        ? version.Length is 0 or > 100 || version.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-' or '_' or '+'))
+        : SelectedProfile is null);
     public bool ProfileFieldsComplete => !(MissingProfileName || MissingProfileMinecraft || MissingProfileMemory || MissingProfileLoaderVersion);
-    public string MissingProfileFieldsText => TextCatalog.Get("ProfileFieldsMissing") + " " +
-        string.Join(", ", new (bool Missing, string Key)[] {
-            (MissingProfileName, "Name"), (MissingProfileMinecraft, "Version"),
-            (MissingProfileMemory, "Memory"), (MissingProfileLoaderVersion, "LoaderVersion")
+    public bool ShowProfileNameError => validationAttempted && MissingProfileName;
+    public bool ShowProfileMinecraftError => validationAttempted && MissingProfileMinecraft;
+    public bool ShowProfileMemoryError => validationAttempted && MissingProfileMemory;
+    public bool ShowProfileLoaderError => validationAttempted && MissingProfileLoaderVersion;
+    public bool ShowProfileValidation => validationAttempted && !ProfileFieldsComplete;
+    public string MissingProfileFieldsText =>
+        string.Join(Environment.NewLine, new (bool Missing, string Key)[] {
+            (MissingProfileName, "ProfileNameError"), (MissingProfileMinecraft, "VersionSearch"),
+            (MissingProfileMemory, "ProfileMemoryError"), (MissingProfileLoaderVersion, "LoaderVersionPrompt")
         }.Where(item => item.Missing).Select(item => TextCatalog.Get(item.Key)));
+
+    internal void SetProfileValidation(bool attempted)
+    {
+        validationAttempted = attempted;
+        RefreshProfileFields();
+    }
 
     private void RefreshProfileFields()
     {
@@ -57,6 +72,8 @@ public sealed partial class MainViewModel
         Changed(nameof(MissingProfileLoaderVersion));
         Changed(nameof(ProfileFieldsComplete));
         Changed(nameof(MissingProfileFieldsText));
+        Changed(nameof(ShowProfileNameError)); Changed(nameof(ShowProfileMinecraftError));
+        Changed(nameof(ShowProfileMemoryError)); Changed(nameof(ShowProfileLoaderError)); Changed(nameof(ShowProfileValidation));
         Changed(nameof(ProfileDraftSummary)); Changed(nameof(IsCreatingProfile));
     }
 

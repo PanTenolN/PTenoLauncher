@@ -107,33 +107,40 @@ public sealed class DesktopTests
         vm.SelectedTheme = LauncherTheme.GraphiteDark; await vm.SaveThemeAsync();
     }
     [AvaloniaFact]
-    public async Task ModsNavigationIsHiddenForVanillaAndReturnsHomeWhenSwitching()
+    public async Task ModManagementAppearsOnlyInsideAModdedProfile()
     {
         using var ws = new TestWorkspace(); using var services = new LauncherServices(ws.Paths);
+        var profiles = new[] {ModLoader.Fabric, ModLoader.Forge, ModLoader.NeoForge, ModLoader.Quilt}.Select(ws.Profile).ToArray();
+        await services.Store.InitializeAsync();
+        foreach (var profile in profiles) await services.Store.SaveProfileAsync(profile);
         var vm = new MainViewModel(services); await vm.InitializeAsync();
         var window = new MainWindow { DataContext = vm }; window.Show();
         try
         {
-            var button = window.FindControl<Button>("ModsNavButton")!;
-            Assert.False(vm.CanManageMods); Assert.False(button.IsVisible);
-            foreach (var loader in new[] {ModLoader.Fabric, ModLoader.Forge, ModLoader.NeoForge, ModLoader.Quilt})
+            Assert.Null(window.FindControl<Button>("ModsNavButton"));
+            var workspace = window.FindControl<Grid>("ProfileWorkspaceView")!;
+            var modTable = window.FindControl<Grid>("ProfileModDropZone")!;
+            foreach (var modded in profiles)
             {
-                var modded = ws.Profile(loader); await services.Store.SaveProfileAsync(modded);
                 vm.SelectedProfile = modded;
-                Assert.True(vm.CanManageMods); Assert.True(button.IsVisible);
-                Assert.Equal(loader == ModLoader.Fabric, vm.IsFabricProfile);
-                Assert.Equal(loader == ModLoader.Quilt, vm.IsQuiltProfile);
+                Assert.True(vm.CanManageMods); Assert.False(workspace.IsVisible);
+                Assert.Equal(modded.Loader == ModLoader.Fabric, vm.IsFabricProfile);
+                Assert.Equal(modded.Loader == ModLoader.Quilt, vm.IsQuiltProfile);
                 Assert.Equal(vm.IsQuiltProfile, window.FindControl<Border>("QuiltLoaderPanel")!.IsVisible);
-                Assert.Equal(vm.IsFabricProfile, window.FindControl<Border>("FabricLoaderPanel")!.IsVisible);
-                vm.Page = LauncherPage.Mods; Assert.True(vm.IsMods);
+                Assert.Null(window.FindControl<Border>("FabricLoaderPanel"));
+                vm.OpenProfileWorkspace(modded.Id);
+                vm.ChooseWorkspaceSection(ProfileSection.Mods);
+                Assert.True(workspace.IsVisible);
+                Assert.True(modTable.IsVisible);
                 vm.FabricStatus = "prior profile installation status"; vm.QuiltStatus = "prior profile installation status";
-                var vanilla = modded with {Loader = ModLoader.Vanilla};
-                await services.Store.SaveProfileAsync(vanilla); vm.SelectedProfile = vanilla;
-                Assert.False(vm.CanManageMods); Assert.False(button.IsVisible);
+                vm.SelectedProfile = modded with {Loader = ModLoader.Vanilla};
+                Assert.False(vm.CanManageMods); Assert.False(modTable.IsVisible);
                 Assert.DoesNotContain("prior profile",vm.FabricStatus); Assert.DoesNotContain("prior profile",vm.QuiltStatus);
-                Assert.False(vm.IsFabricProfile); Assert.False(window.FindControl<Border>("FabricLoaderPanel")!.IsVisible);
-                Assert.Equal(LauncherPage.Home, vm.Page); Assert.False(vm.IsMods);
-                vm.Page = LauncherPage.Mods; Assert.Equal(LauncherPage.Home, vm.Page);
+                Assert.False(vm.IsFabricProfile);
+                Assert.Equal(LauncherPage.ProfileWorkspace, vm.Page);
+                vm.BackFromProfileWorkspace();
+                Assert.Equal(LauncherPage.Home, vm.Page);
+                Assert.False(workspace.IsVisible);
             }
         }
         finally { window.Close(); }
@@ -164,7 +171,7 @@ public sealed class DesktopTests
         var window=new MainWindow{DataContext=vm};window.Show();
         try
         {
-            vm.Page=LauncherPage.Mods;Assert.False(vm.IsBusy);
+            Assert.False(vm.IsBusy);
             var dialog=new ModCatalogDialog(vm,p,review:true);dialog.Show(window);
             Assert.NotNull(dialog.FindControl<Button>("ResolveModCartButton"));
             await vm.AddModsAsync([first]);Assert.True(vm.LastOperationSucceeded,vm.Status);await vm.ResolveCartAsync();Assert.True(vm.LastOperationSucceeded,vm.Status);
@@ -191,7 +198,7 @@ public sealed class DesktopTests
         var window=new MainWindow{DataContext=vm};window.Show();
         try
         {
-            vm.Page=LauncherPage.Mods;var dialog=new ModCatalogDialog(vm,p,review:true);dialog.Show(window);dialog.UpdateLayout();
+            var dialog=new ModCatalogDialog(vm,p,review:true);dialog.Show(window);dialog.UpdateLayout();
             Assert.NotNull(dialog.FindControl<ItemsControl>("OptionalDependencyList"));
             var choice=Assert.Single(vm.OptionalChoices);Assert.False(choice.IsSelected);Assert.DoesNotContain(vm.RemoteEntries,e=>e.Version.ProjectId=="D");
             var checkbox=dialog.GetVisualDescendants().OfType<CheckBox>().Single(b=>ReferenceEquals(b.DataContext,choice));

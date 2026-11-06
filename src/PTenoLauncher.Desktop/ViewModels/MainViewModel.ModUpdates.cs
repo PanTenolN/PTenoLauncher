@@ -83,7 +83,9 @@ public sealed partial class MainViewModel
     public Task ApplyModUpdatesAsync() => RunAsync(async ct =>
     {
         await modUpdates.ApplyAsync(RequireProfile(), updatePlan ?? throw new ModUpdateException("UpdatesSelect"), UpdatesConfirmed, ct);
-        ResetModUpdates(); ClearInstallationCart(); await LoadUpdateHistory(ct); Status = TextCatalog.Get("UpdatesApplied");
+        ResetModUpdates(); ClearInstallationCart(); await LoadUpdateHistory(ct);
+        await InvalidateWorkspaceModsAsync(RequireProfile().Id);
+        Status = TextCatalog.Get("UpdatesApplied");
     });
     public Task RefreshModUpdateHistoryAsync() => RunAsync(LoadUpdateHistory);
     public Task PreviewModRollbackAsync() => RunAsync(async ct =>
@@ -95,7 +97,9 @@ public sealed partial class MainViewModel
     });
     public Task RecoverModUpdatesAsync() => RunAsync(async ct =>
     {
-        await modUpdates.RecoverAsync(RequireProfile(), UpdatesConfirmed, ct); ResetModUpdates(); await LoadUpdateHistory(ct); Status = TextCatalog.Get("UpdatesRecovered");
+        await modUpdates.RecoverAsync(RequireProfile(), UpdatesConfirmed, ct); ResetModUpdates(); await LoadUpdateHistory(ct);
+        await InvalidateWorkspaceModsAsync(RequireProfile().Id);
+        Status = TextCatalog.Get("UpdatesRecovered");
     });
     private void RefreshModUpdateLanguage()
     { foreach (var row in UpdateChoices) row.RefreshLanguage(); foreach (var item in ModUpdateHistory) item.RefreshLanguage(); Changed(nameof(ModUpdateSummary)); Changed(nameof(ModUpdateHistory)); }

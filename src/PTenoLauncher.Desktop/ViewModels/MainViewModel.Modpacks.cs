@@ -264,6 +264,19 @@ public sealed partial class MainViewModel
         if (!LastOperationSucceeded) { PackConsent = false; packStale = true; packHint = "PackRecovery"; }
         await RefreshPackPendingAsync(CancellationToken.None); RefreshPackText();
     }
+    internal async Task CreateReconciledCopyAsync(PackCopyPlan plan)
+    {
+        if (IsBusy || IsGameLaunchActive) return;
+        await RunAsync(async ct =>
+        {
+            var result = await services.Modpacks.CreateCopyAsync(plan, true, ct: ct);
+            await ReloadProfilesAsync(CancellationToken.None);
+            SelectedProfile = Profiles.Single(p => p.Id == result.Profile.Id);
+            Status = TextCatalog.Get("PackImported");
+        });
+        await RefreshPackPendingAsync(CancellationToken.None);
+    }
+
     public async Task RecoverPacksAsync()
     {
         if (IsBusy || IsGameLaunchActive || !PackConsent) return;

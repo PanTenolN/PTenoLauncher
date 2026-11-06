@@ -280,9 +280,7 @@ public sealed class HistoricalAssetTests
         var values = new Dictionary<string, string> { ["game_assets"] = AssetManager.GameAssets(ws.Paths, p.Id, receipt), ["game_directory"] = ws.Paths.Game(p.Id),
             ["version_type"] = receipt.VersionType, ["natives_directory"] = "C:/synthetic path/natives", ["classpath"] = string.Join(Path.PathSeparator, receipt.Classpath.Select(f => SafePath.Join(ws.Paths.Cache, f))) };
         var expanded = receipt.JvmArguments.Concat(receipt.GameArguments).Select(a => LaunchArgumentExpansion.Expand(a, values)).Concat(["two words", "", "${literal}", "quote\"value", "українська"]).ToArray();
-        var root = new DirectoryInfo(AppContext.BaseDirectory); while (root is not null && !File.Exists(Path.Combine(root.FullName, "PTenoLauncher.sln"))) root = root.Parent;
-        Assert.NotNull(root);
-        var probe = Path.Combine(root!.FullName, "tests", "PTenoLauncher.IntegrationSmoke", "bin", "Release", "net10.0", "PTenoLauncher.IntegrationSmoke.dll");
+        var probe = PTenoLauncher.Testing.OwnedTestRoot.BuildArtifact("PTenoLauncher.IntegrationSmoke", "PTenoLauncher.IntegrationSmoke", "tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll");
         var dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { } d ? Path.Combine(d, "dotnet.exe") : "dotnet");
         var start = new ProcessStartInfo(dotnet) { WorkingDirectory = ws.Paths.Root, UseShellExecute = false };
         start.ArgumentList.Add(probe); start.ArgumentList.Add("--argument-probe"); foreach (var a in expanded) start.ArgumentList.Add(a);

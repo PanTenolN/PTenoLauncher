@@ -54,6 +54,7 @@ public sealed partial class MainViewModel
         if (!IsInitialized || NeedsLanguageSelection || launcherChecking || automatic && !AutoLauncherUpdates) return;
         if (launcherLater) { SetLauncherUpdateStatus("UpdaterDeferred"); return; }
         if (LauncherRecoveryRequired) { LauncherUpdateOffered?.Invoke(this, EventArgs.Empty); return; }
+        if (Offline) { SetLauncherUpdateStatus("UpdaterOffline"); return; }
         launcherChecking = true; using var cancel = new CancellationTokenSource(); launcherCheck = cancel;
         try
         {

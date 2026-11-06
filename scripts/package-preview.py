@@ -1,11 +1,13 @@
 """Package clean preview binaries/source; never include user data or Minecraft cache."""
-import hashlib, zipfile, json
+import argparse, hashlib, zipfile, json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
 version=ET.parse(root/"Directory.Build.props").findtext("PropertyGroup/Version")
-artifacts=root/"artifacts"/version
+parser=argparse.ArgumentParser()
+parser.add_argument("--artifacts",type=Path,default=root/"artifacts"/version)
+artifacts=parser.parse_args().artifacts
 publish=artifacts/"win-x64"
 if not (publish/"PTenoLauncher.exe").is_file():
     raise SystemExit("Publish the Windows app first.")

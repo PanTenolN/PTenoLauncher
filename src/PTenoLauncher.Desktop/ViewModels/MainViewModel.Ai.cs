@@ -63,7 +63,7 @@ public sealed partial class MainViewModel
     public bool AiWaiting => aiRequest && IsBusy;
     public bool AiChatEmpty => AiConversation.Count == 0;
     public void RefreshAiText()
-    { foreach (var name in new[] { nameof(AiKeyState), nameof(AiConnectionState), nameof(AiCanSend), nameof(AiWaiting), nameof(AiChatEmpty), nameof(AiSendPreview), nameof(TranslationDirty), nameof(TranslationPackResult) }) Changed(name); }
+    { foreach (var name in new[] { nameof(AiKeyState), nameof(AiConnectionState), nameof(AiCanSend), nameof(CanUseOnlineAi), nameof(AiWaiting), nameof(AiChatEmpty), nameof(AiSendPreview), nameof(TranslationDirty), nameof(TranslationPackResult) }) Changed(name); }
     public void ClearAiConversation()
     { sessionContext.Clear(); AiConversation.Clear(); AiResponse = ""; AiConsent = false; RefreshAiText(); }
     public Task SaveAiConfigurationAsync() => RunAsync(async ct =>

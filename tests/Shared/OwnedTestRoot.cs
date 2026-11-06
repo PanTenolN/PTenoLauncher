@@ -21,15 +21,35 @@ public sealed class OwnedTestRoot : IDisposable
     {
         get { var p = new DirectoryInfo(AppContext.BaseDirectory); while (p is not null && !File.Exists(Path.Combine(p.FullName,"PTenoLauncher.sln"))) p = p.Parent; return p?.FullName ?? throw new IOException("Test source root is unavailable."); }
     }
+    private static string? VerificationRoot
+    {
+        get
+        {
+            var root = Environment.GetEnvironmentVariable("PTENO_VERIFICATION_ROOT");
+            if (string.IsNullOrEmpty(root)) return null;
+            var id = Path.GetFileName(root);
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, "\\Averification-[0-9a-f]{32}\\z") ||
+                root != SafePath.Join(ProjectRoot, ".local/test-runs/" + id) ||
+                !File.Exists(SafePath.Join(root, MarkerName)))
+                throw new IOException("Invalid verification operation root.");
+            return root;
+        }
+    }
+    public static string PayloadBase => VerificationRoot is { } root
+        ? SafePath.Join(root, "fixtures") : SafePath.Join(ProjectRoot, ".local/test-runs");
+    public static string EvidenceFor(string id) => VerificationRoot is { } root
+        ? SafePath.Join(ProjectRoot, $"artifacts/verification/{Path.GetFileName(root)}/fixtures/{id}")
+        : SafePath.Join(ProjectRoot, "artifacts/test-lifecycle/" + id);
+    public static string BuildArtifact(string project, string assembly, string legacyRelative) => VerificationRoot is { } root
+        ? SafePath.Join(root, $"bin/{project}/release/{assembly}.dll") : SafePath.Join(ProjectRoot, legacyRelative);
     public OwnedTestRoot(string purpose, long limit = 512L * 1024 * 1024)
     {
         if (!System.Text.RegularExpressions.Regex.IsMatch(purpose, "\\A[a-z0-9-]{1,40}\\z")) throw new ArgumentException("Invalid test purpose.");
         var run = Environment.GetEnvironmentVariable("PTENO_TEST_RUN_ID") ?? "standalone";
         if (!System.Text.RegularExpressions.Regex.IsMatch(run, "\\A[a-zA-Z0-9-]{1,80}\\z")) throw new ArgumentException("Invalid test run ID.");
         var id = purpose + "-" + run + "-" + Guid.NewGuid().ToString("N");
-        var project = ProjectRoot;
-        var root = SafePath.Join(project, ".local/test-runs/" + id);
-        Evidence = SafePath.Join(project, "artifacts/test-lifecycle/" + id);
+        var root = SafePath.Join(PayloadBase, id);
+        Evidence = EvidenceFor(id);
         Directory.CreateDirectory(root); Directory.CreateDirectory(Evidence);
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         marker = new(id,root,limit,process.Id,process.StartTime.ToUniversalTime().Ticks);
@@ -110,10 +130,9 @@ public sealed class OwnedTestRoot : IDisposable
     }
     public static Cleanup CleanupOwned(Marker expected, string evidence)
     {
-        var project = ProjectRoot;
-        var allowed = Path.GetFullPath(Path.Combine(project,".local","test-runs",expected.Id));
-        if (!System.Text.RegularExpressions.Regex.IsMatch(expected.Id,"\\A[a-zA-Z0-9-]{1,160}\\z") ||
-            expected.Root != allowed || evidence != Path.GetFullPath(Path.Combine(project,"artifacts","test-lifecycle",expected.Id))) throw new IOException("Unknown test root.");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(expected.Id,"\\A[a-zA-Z0-9-]{1,160}\\z")) throw new IOException("Unknown test root.");
+        var allowed = SafePath.Join(PayloadBase, expected.Id);
+        if (expected.Root != allowed || evidence != EvidenceFor(expected.Id)) throw new IOException("Unknown test root.");
         long bytes = 0;
         try
         {
@@ -135,10 +154,11 @@ public sealed class OwnedTestRoot : IDisposable
                 }
             }
             var markerFile = SafePath.Join(allowed,MarkerName);
+            var durable=JsonSerializer.Deserialize<Marker>(File.ReadAllText(SafePath.Join(evidence,MarkerName)));
+            if (durable != expected) throw new IOException("Durable test ownership marker changed.");
             if(!File.Exists(markerFile))
             {
-                var durable=JsonSerializer.Deserialize<Marker>(File.ReadAllText(SafePath.Join(evidence,MarkerName)));
-                if(durable!=expected || Directory.EnumerateFileSystemEntries(allowed).Any())throw new IOException("Missing internal ownership marker; nonempty root retained.");
+                if(Directory.EnumerateFileSystemEntries(allowed).Any())throw new IOException("Missing internal ownership marker; nonempty root retained.");
                 File.WriteAllText(markerFile,JsonSerializer.Serialize(expected));
             }
             var actual = JsonSerializer.Deserialize<Marker>(File.ReadAllText(markerFile));

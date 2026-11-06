@@ -13,7 +13,7 @@ public static class MrpackRequirements
         if (r.Schema != 1 || r.Id != profile.Id || r.Profile is null || r.Profile.Id != r.Id || r.Files is null || r.Files.Count > MrpackReader.MaxFiles ||
             r.ArchiveSha256 is null || r.ArchiveSha256.Length != 64 || !r.ArchiveSha256.All(Uri.IsHexDigit) ||
             r.Optional is null || r.Optional.Count > MrpackReader.MaxFiles || r.LoaderVersion?.Length > 100 ||
-            r.SourceKind is not ("local-mrpack" or "local-zip" or "local-prism-multimc" or "local-minecraft-launcher" or ModrinthAppReader.SourceKind or CurseForgeAppReader.SourceKind) || string.IsNullOrWhiteSpace(r.Name) || r.Name.Length > 200 || string.IsNullOrWhiteSpace(r.Version) || r.Version.Length > 200 ||
+            r.SourceKind is not ("local-mrpack" or "local-zip" or "local-prism-multimc" or "local-minecraft-launcher" or ModrinthAppReader.SourceKind or CurseForgeAppReader.SourceKind or MrpackImporter.ReconciledSourceKind) || string.IsNullOrWhiteSpace(r.Name) || r.Name.Length > 200 || string.IsNullOrWhiteSpace(r.Version) || r.Version.Length > 200 ||
             r.IndexSha256 is null || r.IndexSha256.Length != 64 || !r.IndexSha256.All(Uri.IsHexDigit) || r.IndexSize is <= 0 or > MrpackReader.MaxIndexBytes ||
             r.Profile.Loader == ModLoader.Vanilla && r.LoaderVersion is not null || r.Profile.Loader != ModLoader.Vanilla && string.IsNullOrWhiteSpace(r.LoaderVersion) ||
             r.LoaderVersion is not null && r.LoaderVersion.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '-' and not '_' and not '+') ||

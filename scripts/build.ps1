@@ -1,5 +1,10 @@
-param([switch]$Publish,[switch]$Installer,[long]$ReleaseSequence=0,[string]$BuildId='',[ValidateSet('stable','preview')][string]$Channel='preview')
+param([switch]$Publish,[switch]$Installer,[long]$ReleaseSequence=0,[string]$BuildId='',[ValidateSet('stable','preview')][string]$Channel='preview',
+    [string]$VerificationOperation,[switch]$CachedPackages)
 $ErrorActionPreference='Stop'
+if (!$Publish -and $ReleaseSequence -eq 0) {
+    & "$PSScriptRoot/Invoke-Verification.ps1" -Mode all
+    return
+}
 if ($Publish -and ($ReleaseSequence -le 0 -or [string]::IsNullOrWhiteSpace($BuildId))) { throw 'Publishing requires an explicit monotonic ReleaseSequence and unique BuildId.' }
 if ($ReleaseSequence -gt 0 -and $BuildId -notmatch '^[A-Za-z0-9._-]{1,128}$') { throw 'BuildId must contain only letters, digits, dots, underscores and hyphens.' }
 $ptenoIdentityArgs=if ($ReleaseSequence -gt 0) { @("-p:PTenoBuildSequence=$ReleaseSequence","-p:PTenoBuildId=$BuildId","-p:PTenoBuildChannel=$Channel") } else { @() }
@@ -8,6 +13,24 @@ Set-Location -LiteralPath $ptenoRoot
 $ptenoVersion=([xml](Get-Content -LiteralPath 'Directory.Build.props' -Raw)).Project.PropertyGroup.Version | Where-Object { $_ }
 if ($ptenoVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid project version.' }
 $releaseDirectory=Join-Path $ptenoRoot "artifacts/$ptenoVersion"
+$ptenoPublishArgs=@()
+$updateTools='scripts/PTenoLauncher.UpdateTools/bin/Release/net10.0/PTenoLauncher.UpdateTools.dll'
+if ($VerificationOperation) {
+    $projectRoot=$ptenoRoot
+    . "$PSScriptRoot/VerificationStorage.ps1"
+    $operationName=[IO.Path]::GetFileName($VerificationOperation)
+    if (!$Publish -or $operationName -cnotmatch '^verification-[0-9a-f]{32}$' -or
+        $VerificationOperation -cne (Join-Path $ptenoRoot ".local/test-runs/$operationName") -or
+        $env:PTENO_VERIFICATION_ROOT -cne $VerificationOperation) {
+        throw 'Local packaging requires an owned verification operation.'
+    }
+    $null=Read-VerificationMarker $VerificationOperation (Join-Path $ptenoRoot "artifacts/verification/$operationName")
+    $releaseDirectory=Join-Path $VerificationOperation 'tmp/package'
+    Assert-VerificationPath $releaseDirectory
+    $ptenoPublishArgs+=@('--artifacts-path',$VerificationOperation,'--disable-build-servers','-p:UseSharedCompilation=false','-m:1','-nr:false')
+    $updateTools=Join-Path $VerificationOperation 'bin/PTenoLauncher.UpdateTools/release/PTenoLauncher.UpdateTools.dll'
+}
+if ($CachedPackages) { $ptenoPublishArgs+='-p:NuGetAudit=false' }
 $env:DOTNET_CLI_HOME=Join-Path $ptenoRoot '.local/cli'
 $env:NUGET_PACKAGES=Join-Path $ptenoRoot '.local/nuget'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
@@ -45,27 +68,28 @@ function Invoke-PtenoProcess {
     $process.Dispose()
     if ($code -ne 0) { throw "Command failed ($code): $ArgumentList" }
 }
-Invoke-PtenoProcess -ArgumentList @('restore','PTenoLauncher.sln','--locked-mode','--configfile','NuGet.Config','--disable-parallel')
-Invoke-PtenoProcess -ArgumentList (@('build','PTenoLauncher.sln','-c','Release','--no-restore','-m:1')+$ptenoIdentityArgs)
-$testDirectory=Join-Path $releaseDirectory 'tests'
-New-Item -ItemType Directory -Path $testDirectory -Force | Out-Null
-# Use the same xUnit v3 executable runner as the verified local checkpoint.
-# This avoids the separate VSTest data-collector handshake without skipping tests.
-Invoke-PtenoProcess -ArgumentList @('tests/PTenoLauncher.Tests/bin/Release/net10.0/PTenoLauncher.Tests.dll','-noLogo','-noColor','-maxThreads','2','-longRunning','30','-trx',(Join-Path $testDirectory 'tests.trx'))
+if (!$VerificationOperation) {
+    Invoke-PtenoProcess -ArgumentList @('restore','PTenoLauncher.sln','--locked-mode','--configfile','NuGet.Config','--disable-parallel')
+    Invoke-PtenoProcess -ArgumentList (@('build','PTenoLauncher.sln','-c','Release','--no-restore','-m:1')+$ptenoIdentityArgs)
+    $testDirectory=Join-Path $releaseDirectory 'tests'
+    New-Item -ItemType Directory -Path $testDirectory -Force | Out-Null
+    # Use the xUnit v3 executable runner without a separate VSTest data-collector handshake.
+    Invoke-PtenoProcess -ArgumentList @('tests/PTenoLauncher.Tests/bin/Release/net10.0/PTenoLauncher.Tests.dll','-noLogo','-noColor','-maxThreads','2','-longRunning','30','-trx',(Join-Path $testDirectory 'tests.trx'))
+}
 if ($Publish) {
     $publishDirectory=Join-Path $releaseDirectory 'win-x64'
     if (Test-Path -LiteralPath $publishDirectory) { throw "Use a clean $publishDirectory directory for packaging." }
-    Invoke-PtenoProcess -ArgumentList (@('publish','src/PTenoLauncher.Desktop','-c','Release','-r','win-x64','--self-contained','true','-o',$publishDirectory,'-p:PublishSingleFile=false','-p:PublishTrimmed=false','-p:DebugType=none','-p:RestoreLockedMode=true')+$ptenoIdentityArgs)
-    Invoke-PtenoProcess -ArgumentList (@('publish','src/PTenoLauncher.UpdateHelper','-c','Release','-r','win-x64','--self-contained','true','-o',(Join-Path $publishDirectory 'updater'),'-p:PublishSingleFile=false','-p:PublishTrimmed=false','-p:DebugType=none','-p:RestoreLockedMode=true')+$ptenoIdentityArgs)
+    Invoke-PtenoProcess -ArgumentList (@('publish','src/PTenoLauncher.Desktop','-c','Release','-r','win-x64','--self-contained','true','-o',$publishDirectory,'-p:PublishSingleFile=false','-p:PublishTrimmed=false','-p:DebugType=none','-p:RestoreLockedMode=true')+$ptenoIdentityArgs+$ptenoPublishArgs)
+    Invoke-PtenoProcess -ArgumentList (@('publish','src/PTenoLauncher.UpdateHelper','-c','Release','-r','win-x64','--self-contained','true','-o',(Join-Path $publishDirectory 'updater'),'-p:PublishSingleFile=false','-p:PublishTrimmed=false','-p:DebugType=none','-p:RestoreLockedMode=true')+$ptenoIdentityArgs+$ptenoPublishArgs)
     foreach($name in @('README.md','THIRD_PARTY_NOTICES.md','RELEASE_NOTES.md','PROJECT_PROGRESS_SUMMARY.md','DEVELOPMENT_STATUS.md')) { Copy-Item -LiteralPath $name -Destination $publishDirectory }
     New-Item -ItemType Directory -Path (Join-Path $publishDirectory 'docs') | Out-Null
     Copy-Item -LiteralPath 'docs/PREVIEW_RELEASE.md','docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md' -Destination (Join-Path $publishDirectory 'docs')
-    Invoke-PtenoProcess -ArgumentList @('scripts/PTenoLauncher.UpdateTools/bin/Release/net10.0/PTenoLauncher.UpdateTools.dll','inventory',$publishDirectory)
+    Invoke-PtenoProcess -ArgumentList @($updateTools,'inventory',$publishDirectory)
     if ($Installer) {
         $isccCommand=Get-Command ISCC.exe -ErrorAction SilentlyContinue
         $compiler=if ($isccCommand) { $isccCommand.Source } else { Join-Path $ptenoRoot '.tools/InnoSetup6/ISCC.exe' }
         if (!(Test-Path -LiteralPath $compiler)) { throw 'Inno Setup 6 ISCC.exe is required.' }
         Invoke-PtenoProcess -Executable $compiler -ArgumentList @("/DAppVersion=$ptenoVersion","/DPublishDir=$publishDirectory","/O$releaseDirectory",'installer/PTenoLauncher.iss')
     }
-    Invoke-PtenoProcess -Executable (Get-Command python -ErrorAction Stop).Source -ArgumentList @('scripts/package-preview.py')
+    Invoke-PtenoProcess -Executable (Get-Command python -ErrorAction Stop).Source -ArgumentList @('scripts/package-preview.py','--artifacts',$releaseDirectory)
 }

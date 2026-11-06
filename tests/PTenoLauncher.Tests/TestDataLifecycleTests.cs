@@ -19,15 +19,17 @@ public sealed class TestDataLifecycleTests
         async Task<(int Exit,string Output)> Run(string dll,params string[] args)
         {
             var start=new System.Diagnostics.ProcessStartInfo(dotnet){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=OwnedTestRoot.ProjectRoot};
-            start.ArgumentList.Add(Path.Combine(OwnedTestRoot.ProjectRoot,dll));foreach(var a in args)start.ArgumentList.Add(a);
+            start.ArgumentList.Add(dll);foreach(var a in args)start.ArgumentList.Add(a);
             using var p=System.Diagnostics.Process.Start(start)!;var output=p.StandardOutput.ReadToEndAsync();var error=p.StandardError.ReadToEndAsync();using var limit=new CancellationTokenSource(TimeSpan.FromSeconds(30));await p.WaitForExitAsync(limit.Token);return(p.ExitCode,await output+await error);
         }
-        var result=await Run("tests/PTenoLauncher.UpdaterE2E/bin/Release/net10.0/PTenoLauncher.UpdaterE2E.dll","--lifecycle-probe",mode);Assert.Equal(expected,result.Exit);
+        var updater = OwnedTestRoot.BuildArtifact("PTenoLauncher.UpdaterE2E", "PTenoLauncher.UpdaterE2E", "tests/PTenoLauncher.UpdaterE2E/bin/Release/net10.0/PTenoLauncher.UpdaterE2E.dll");
+        var result=await Run(updater,"--lifecycle-probe",mode);Assert.Equal(expected,result.Exit);
         using var json=JsonDocument.Parse(result.Output);var root=json.RootElement.GetProperty("root").GetString()!;var evidence=json.RootElement.GetProperty("evidence").GetString()!;
         Assert.True(File.Exists(Path.Combine(evidence,"records","failure.log")));
         if(mode=="abandon")
         {
-            Assert.True(Directory.Exists(root));var recovery=await Run("tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll","--owned-cleanup",root);Assert.True(recovery.Exit==0,recovery.Output);
+            var smoke = OwnedTestRoot.BuildArtifact("PTenoLauncher.IntegrationSmoke", "PTenoLauncher.IntegrationSmoke", "tests/PTenoLauncher.IntegrationSmoke/bin/Release/net10.0/PTenoLauncher.IntegrationSmoke.dll");
+            Assert.True(Directory.Exists(root));var recovery=await Run(smoke,"--owned-cleanup",root);Assert.True(recovery.Exit==0,recovery.Output);
         }
         Assert.False(Directory.Exists(root));
     }
