@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       version: ${{ steps.release_version.outputs.version }}
+      artifact_id: ${{ steps.preview_artifact.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +61,7 @@ jobs:
           python scripts/verify-requirements.py
           python scripts/verify-packages.py --smoke
       - uses: actions/upload-artifact@v4
+        id: preview_artifact
         if: always()
         with:
           name: PTenoLauncher-windows-preview-${{ github.sha }}
@@ -85,8 +87,9 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: PTenoLauncher-windows-preview-${{ github.sha }}
+          artifact-ids: ${{ needs.windows.outputs.artifact_id }}
           path: preview
+          merge-multiple: true
       - name: Publish development prerelease
         env:
           GH_TOKEN: ${{ github.token }}
