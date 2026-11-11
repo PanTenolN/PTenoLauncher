@@ -33,7 +33,7 @@ internal static class ReadableName
         var split = stem.IndexOfAny(['-', '_', ' ', '.']);
         var length = split < 0 ? stem.Length : split;
         if (!LooksTechnical(stem) ||
-            !digests.Any(hash => hash is not null && hash.StartsWith(stem[..length], StringComparison.OrdinalIgnoreCase))) return null;
+            !digests.Any(hash => hash is { Length: 64 or 128 } && hash.StartsWith(stem[..length], StringComparison.OrdinalIgnoreCase))) return null;
         return split < 0 ? "" : stem[(split + 1)..];
     }
 

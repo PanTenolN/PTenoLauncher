@@ -15,7 +15,7 @@ namespace PTenoLauncher.Desktop;
 public sealed class LauncherServices : IDisposable
 {
     public LauncherPaths Paths { get; }
-    public ILauncherStore Store { get; }
+    public SqliteLauncherStore Store { get; }
     public NetworkPolicy Network { get; } = new();
     public InternetConnectivity Connectivity { get; }
     public LauncherLog Log { get; }
@@ -44,6 +44,10 @@ public sealed class LauncherServices : IDisposable
     public PTenoLauncher.Infrastructure.AI.AiPolicy Ai { get; } = new();
     public ProfileUsage Usage { get; }
     public ProfileContent Content { get; }
+    public WorldManager Worlds { get; }
+    public ProfileScreenshots Screenshots { get; }
+    public StorageUsageReport StorageUsage { get; }
+    public VanillaServerManager Servers { get; }
     public ProfileDeletionService Deletion { get; }
     public ProfileFolderMover ProfileFolders { get; }
     public ProfileFileRenamer ProfileFiles { get; }
@@ -74,10 +78,14 @@ public sealed class LauncherServices : IDisposable
         Modrinth = new(paths, downloads, Network); RemoteMods = new(paths, Store, Modrinth, downloads, Mods); Backups = new(paths, Store);
         ModUpdates = new(paths, Store, Modrinth, downloads, Mods);
         Launcher = new(paths, Readiness, Authentication, Network, Store, Log, ModUpdates);
-        Modpacks = new(paths, (SqliteLauncherStore)Store, downloads, Network);
+        Modpacks = new(paths, Store, downloads, Network);
         PackExporter = new(paths, Store, Modrinth);
         LauncherUpdates = new LauncherUpdateWorkflow(paths, new(paths, downloads, Network, LauncherUpdateTrust.Production, LauncherBuild.Current), LauncherUpdateTrust.Production, AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
-        Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage); Content = new(paths);
+        Preferences = new(Store); Usage = new(paths); Deletion = new(paths, Store, Usage); Content = new(paths, Backups);
+        Worlds = new(paths, Store, Content, Backups);
+        Screenshots = new(paths);
+        StorageUsage = new(paths, Store, Backups);
+        Servers = new(paths, Versions, downloads, Runtimes, Store);
         ProfileFolders = new(paths, Store, Usage);
         ProfileFiles = new(paths, Store, Mods, Content);
         AiSecrets = new(paths);

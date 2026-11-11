@@ -80,7 +80,15 @@ public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager i
     internal static bool IsFileError(Exception ex) => ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException;
     internal static IReadOnlyList<ReadinessIssue> CheckFabricSet(GameProfile p, InstallationReceipt? receipt, List<ModInspection> all)
     { var issues = new List<ReadinessIssue>(); CheckDependencies(p, receipt, all, issues); return issues; }
-    private static void CheckDependencies(GameProfile profile, InstallationReceipt? receipt, List<ModInspection> all, List<ReadinessIssue> issues)
+    internal static IReadOnlyList<ReadinessIssue> CheckFabricServer(GameProfile profile, string loader, int java, List<ModInspection> all)
+    {
+        var issues = new List<ReadinessIssue>();
+        CheckDependencies(profile, null, all, issues, "server", loader, java);
+        return issues;
+    }
+
+    private static void CheckDependencies(GameProfile profile, InstallationReceipt? receipt, List<ModInspection> all,
+        List<ReadinessIssue> issues, string side = "client", string? loader = null, int? java = null)
     {
         if (profile.Loader is ModLoader.Forge or ModLoader.NeoForge)
         {
@@ -92,9 +100,10 @@ public sealed class InstalledModReadiness(LauncherPaths paths, LocalModManager i
             issues.AddRange(QuiltCompatibility.Check(profile, receipt, all));
             return;
         }
-        var versions = new Dictionary<string, string?>(StringComparer.Ordinal) { ["minecraft"] = profile.MinecraftVersion, ["java"] = receipt?.JavaMajor.ToString() };
-        if (profile.Loader == ModLoader.Fabric) versions["fabricloader"] = receipt is {Loader: ModLoader.Fabric} ? receipt.LoaderVersion : null;
-        var active = all.Where(m => m.Loader == ModLoader.Fabric && m.Environment is "*" or "client").ToArray();
+        var versions = new Dictionary<string, string?>(StringComparer.Ordinal)
+        { ["minecraft"] = profile.MinecraftVersion, ["java"] = (java ?? receipt?.JavaMajor)?.ToString() };
+        if (profile.Loader == ModLoader.Fabric) versions["fabricloader"] = loader ?? (receipt is { Loader: ModLoader.Fabric } ? receipt.LoaderVersion : null);
+        var active = all.Where(m => m.Loader == ModLoader.Fabric && (m.Environment == "*" || m.Environment == side)).ToArray();
         var roots = new HashSet<string>(versions.Keys, StringComparer.Ordinal);
         void Supply(string id, string? version, string file, bool root)
         {

@@ -112,7 +112,10 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
         if (r.GetProperty("project_type").GetString() != "mod") throw new InvalidDataException("Цей каталог підтримує лише моди.");
         var license = r.TryGetProperty("license", out var policy) && policy.ValueKind == JsonValueKind.Object ? GetString(policy, "id") : null;
         var p = new CatalogProject(r.GetProperty("id").GetString()!, r.GetProperty("slug").GetString()!,
-            r.GetProperty("title").GetString()!, !r.TryGetProperty("client_side", out var c) || c.GetString() != "unsupported", license);
+            r.GetProperty("title").GetString()!, !r.TryGetProperty("client_side", out var c) || c.GetString() != "unsupported", license)
+        {
+            SupportsServer = !r.TryGetProperty("server_side", out var side) || side.GetString() != "unsupported"
+        };
         _ = Identifier(p.Id);
         if (id != p.Id) await CacheAsync("project/" + p.Id, Encoding.UTF8.GetBytes(r.GetRawText()), ct);
         return p;
@@ -150,12 +153,33 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
         if (version.Id != id) throw new InvalidDataException("Невідповідний ID версії.");
         return version;
     }
-    public async Task<CatalogModVersion?> FindBySha512Async(string hash, CancellationToken ct = default)
+    public Task<CatalogModVersion?> FindBySha512Async(string hash, CancellationToken ct = default) =>
+        FindFileVersionAsync(hash, ".jar", ct);
+
+    internal async Task<CatalogModVersion?> FindAternosVersionAsync(string hash, string type, CancellationToken ct)
+    {
+        var version = await FindFileVersionAsync(hash, type is "resourcepack" or "shader" ? ".zip" : ".jar", ct);
+        return type == "plugin" && version is not null && !version.Loaders.Any(loader => loader is "paper" or "purpur" or "spigot" or "bukkit" or "folia")
+            ? null : version;
+    }
+
+    internal async Task<Uri?> AternosProjectPageAsync(string id, string type, CancellationToken ct)
+    {
+        using var doc = await GetAsync("project/" + Identifier(id), ct);
+        var project = doc.RootElement;
+        if (project.ValueKind != JsonValueKind.Object || GetString(project, "id") != id ||
+            GetString(project, "status") is not ("approved" or "archived" or "unlisted") ||
+            GetString(project, "project_type") != (type == "plugin" ? "mod" : type) ||
+            GetString(project, "slug") is not { } slug) return null;
+        return new("https://modrinth.com/" + type + "/" + Identifier(slug));
+    }
+
+    private async Task<CatalogModVersion?> FindFileVersionAsync(string hash, string extension, CancellationToken ct)
     {
         if (hash.Length != 128 || !hash.All(Uri.IsHexDigit)) throw new ArgumentException("Потрібен SHA512.");
         using var doc = await GetAsync("version_file/" + hash.ToLowerInvariant() + "?algorithm=sha512", ct);
         if (doc.RootElement.ValueKind == JsonValueKind.Null) return null;
-        return ParseVersion(doc.RootElement, hash);
+        return ParseVersion(doc.RootElement, hash, extension);
     }
     public async Task<IReadOnlyList<CatalogModVersion>> GetContentVersionsAsync(string id, string minecraft, ProfileContentKind kind, CancellationToken ct = default)
     {
@@ -182,7 +206,8 @@ public sealed class ModrinthClient(LauncherPaths paths, VerifiedDownloader downl
     {
         var file = version.File;
         var target = SafePath.Join(paths.Cache, $"modrinth/content/{file.Sha512}/{file.Name}");
-        await downloads.DownloadAsync(file.Url, target, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
+        await downloads.DownloadAsync(file.Url, target, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth,
+            displayName: version.Name);
         return target;
     }
 

@@ -10,12 +10,38 @@ public sealed record BackupManifest(int FormatVersion, GameProfile Profile, IRea
 
 public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
 {
-    public async Task<string> CreateAsync(GameProfile profile, CancellationToken ct = default)
+    private const string DirectorySetting = "profiles.backup-directory";
+
+    public async Task<string> GetDirectoryAsync(CancellationToken ct = default) =>
+        ResolveDirectory(await store.GetSettingAsync(DirectorySetting, ct));
+
+    public Task SetDirectoryAsync(string? directory, CancellationToken ct = default) =>
+        store.SetSettingAsync(DirectorySetting, directory is null ? "" : ResolveDirectory(directory), ct);
+
+    private string ResolveDirectory(string? directory)
     {
-        using var lease = new ProfileUsage(paths).Acquire(profile.Id);
+        if (string.IsNullOrEmpty(directory)) directory = paths.Backups;
+        if (!Path.IsPathFullyQualified(directory)) throw new IOException("BackupDirectoryInvalid");
+        directory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        SafePath.RejectLinks(directory);
+        var relative = Path.GetRelativePath(paths.Root, directory);
+        if (!directory.Equals(paths.Backups, StringComparison.OrdinalIgnoreCase) && !Path.IsPathRooted(relative) &&
+            relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            throw new IOException("BackupDirectoryInvalid");
+        if (!Directory.Exists(directory)) throw new DirectoryNotFoundException("BackupDirectoryMissing");
+        return directory;
+    }
+
+    public async Task<string> CreateAsync(GameProfile profile, CancellationToken ct = default, string label = "Backup")
+    {
+        var usage = new ProfileUsage(paths);
+        using var lease = usage.Acquire(profile.Id);
+        usage.CheckWorldLocks(profile.Id);
         var source = paths.Game(profile.Id);
-        var target = SafePath.Join(paths.Backups, $"{profile.Id:N}-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.zip");
-        var partial = target + ".part";
+        var directory = await GetDirectoryAsync(ct);
+        var stem = ReadableName.Stem(profile.Name, "Profile", 64) + " — " + ReadableName.Stem(label, "Backup", 40) + $" — {DateTime.UtcNow:yyyy-MM-dd}";
+        var partial = SafePath.Join(directory, ".pteno-backup-" + Guid.NewGuid().ToString("N") + ".part");
+        var ownsPartial = false;
         var locks = new List<FileStream>();
         try
         {
@@ -29,6 +55,7 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
             await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
             using (var archive = new ZipArchive(output, ZipArchiveMode.Create, true))
             {
+                ownsPartial = true;
                 foreach (var file in EnumerateSafeFiles(source))
                 {
                     ct.ThrowIfCancellationRequested();
@@ -50,16 +77,25 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
                 await using var json = metadata.Open();
                 await JsonSerializer.SerializeAsync(json, new BackupManifest(1, profile, entries), AtomicFile.JsonOptions, ct);
             }
-            ct.ThrowIfCancellationRequested(); File.Move(partial, target, false);
-            await VerifyAsync(target, ct);
-            await store.RegisterArtifactAsync(new(profile.Id, Path.GetRelativePath(paths.Root, target).Replace('\\', '/'), "backup"), ct);
+            await VerifyAsync(partial, ct);
+            ct.ThrowIfCancellationRequested();
+            string target;
+            for (var attempt = 0; ; attempt++)
+            {
+                target = ReadableName.Free(directory, stem, ".zip");
+                try { File.Move(partial, target, false); break; }
+                catch (IOException) when (attempt < 7 && (File.Exists(target) || Directory.Exists(target))) { }
+            }
+            ownsPartial = false;
+            if (directory.Equals(paths.Backups, StringComparison.OrdinalIgnoreCase))
+                await store.RegisterArtifactAsync(new(profile.Id, Path.GetRelativePath(paths.Root, target).Replace('\\', '/'), "backup"), ct);
             await store.AddHistoryAsync(profile.Id, "backup.created", Path.GetFileName(target), ct);
             return target;
         }
         finally
         {
             foreach (var handle in locks) handle.Dispose();
-            if (File.Exists(partial)) File.Delete(partial);
+            if (ownsPartial) { SafePath.RejectLinks(partial); File.Delete(partial); }
         }
     }
     private static IEnumerable<string> EnumerateSafeFiles(string directory)
@@ -74,6 +110,7 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
     }
     public async Task<BackupManifest> VerifyAsync(string file, CancellationToken ct = default)
     {
+        SafePath.RejectLinks(file);
         using var archive = ZipFile.OpenRead(file);
         SafeArchive.Validate(archive, paths.Root, 4L * 1024 * 1024 * 1024);
         var metadata = archive.GetEntry("backup.json") ?? throw new InvalidDataException("Немає backup.json.");
@@ -103,7 +140,7 @@ public sealed class BackupManager(LauncherPaths paths, ILauncherStore store)
         var stage = SafePath.Join(paths.Root, "restore-" + Guid.NewGuid().ToString("N"));
         try
         {
-            await SafeArchive.ExtractAsync(file, stage, ct);
+            await SafeArchive.ExtractAsync(file, stage, ct, maxExpanded: 4L * 1024 * 1024 * 1024);
             foreach (var item in manifest.Files)
                 if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(SafePath.Join(stage, "game/" + item.RelativePath), item.Hash, item.Algorithm, item.Size, ct))
                     throw new InvalidDataException("Розпакований backup не пройшов перевірку.");

@@ -72,7 +72,7 @@ public sealed partial class MainViewModel
             InvalidateTranslationConsent();
         }
         foreach (var name in new[] { nameof(Offline), nameof(ModeText), nameof(CatalogSearchStatus),
-            nameof(CanUseOnlineCatalog), nameof(CanAddCatalogVersion), nameof(CanUseOnlineContent), nameof(CanUseOnlineAi) })
+            nameof(CanUseOnlineCatalog), nameof(CanAddCatalogVersion), nameof(CanUseOnlineContent), nameof(CanUseOnlineAi), nameof(WorkspacePackCatalogOffline) })
             Changed(name);
         RefreshAiText();
     }

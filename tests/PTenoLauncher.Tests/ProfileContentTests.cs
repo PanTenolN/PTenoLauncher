@@ -8,6 +8,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using PTenoLauncher.Core;
 using PTenoLauncher.Desktop;
+using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Desktop.ViewModels;
 using PTenoLauncher.Desktop.Dialogs;
 using PTenoLauncher.Infrastructure.Minecraft;
@@ -20,16 +21,209 @@ namespace PTenoLauncher.Tests;
 public sealed class ProfileContentTests
 {
     [AvaloniaFact]
+    public async Task IncompatibleResourcePackNeedsConfirmationBeforeChangingOptions()
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile() with { MinecraftVersion = "1.21" };
+        await services.Store.SaveProfileAsync(profile);
+        WriteZip(SafePath.Join(services.Content.Folder(profile.Id, ProfileContentKind.ResourcePacks), "older.zip"), "pack.mcmeta",
+            """{"pack":{"pack_format":12,"description":"Older pack"}}""");
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(ProfileSection.ResourcePacks);
+        await vm.WaitForWorkspaceSnapshotAsync();
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            vm.WorkspaceContentSelection = Assert.Single(vm.WorkspaceContentRows);
+            Assert.Equal(ResourcePackCompatibility.Incompatible, vm.WorkspaceContentSelection.Compatibility);
+            var options = SafePath.Join(ws.Paths.Game(profile.Id), "options.txt");
+            var toggle = window.FindControl<Button>("WorkspaceTogglePackButton")!;
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(File.Exists(options));
+            Assert.Single(window.OwnedWindows.OfType<ContentActionDialog>()).Close();
+            await WaitForAsync(() => window.OwnedWindows.Count == 0);
+            Assert.False(File.Exists(options));
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Single(window.OwnedWindows.OfType<ContentActionDialog>()).Close(false);
+            await WaitForAsync(() => vm.WorkspaceContentSelection?.Enabled == true);
+            Assert.Contains("incompatibleResourcePacks:[\"file/older.zip\"]", await File.ReadAllTextAsync(options));
+        }
+        finally { window.Close(); }
+    }
+
+    [Fact]
+    public async Task ResourcePackFormatAndTogglePreserveUnrelatedMinecraftOptions()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile() with { MinecraftVersion = "1.21" };
+        await ws.Store.SaveProfileAsync(profile);
+        var content = new ProfileContent(ws.Paths);
+        var folder = content.Folder(profile.Id, ProfileContentKind.ResourcePacks);
+        using (var zip = ZipFile.Open(Path.Combine(folder, "test.zip"), ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("pack.mcmeta").Open()))
+            await writer.WriteAsync("""{"pack":{"pack_format":33,"supported_formats":[33,34],"description":"Fixture pack"}}""");
+        var options = Path.Combine(ws.Paths.Game(profile.Id), "options.txt");
+        await File.WriteAllTextAsync(options, "renderDistance:8\r\nresourcePacks:[\"vanilla\",\"file/old.zip\"]\r\n");
+        var pack = Assert.Single(await content.ListAsync(profile.Id, ProfileContentKind.ResourcePacks, profileInfo: profile));
+        Assert.Equal(ResourcePackCompatibility.Compatible, pack.Compatibility);
+        Assert.False(pack.Enabled);
+        await content.SetResourcePackEnabledAsync(profile.Id, pack, true);
+        Assert.True(Assert.Single(await content.ListAsync(profile.Id, ProfileContentKind.ResourcePacks, profileInfo: profile)).Enabled);
+        await content.SetResourcePackEnabledAsync(profile.Id, pack, false);
+        Assert.Contains("renderDistance:8\r\nresourcePacks:[\"vanilla\",\"file/old.zip\"]", await File.ReadAllTextAsync(options));
+        Assert.False(Assert.Single(await content.ListAsync(profile.Id, ProfileContentKind.ResourcePacks, profileInfo: profile)).Enabled);
+        await File.WriteAllTextAsync(options, "resourcePacks:[");
+        await Assert.ThrowsAsync<InvalidDataException>(() => content.SetResourcePackEnabledAsync(profile.Id, pack, true));
+        Assert.Equal("resourcePacks:[", await File.ReadAllTextAsync(options));
+    }
+
+    [Fact]
+    public async Task LauncherGeneratedTranslationPackAppearsOnlyInItsProfile()
+    {
+        using var f = new AiUxFixture();
+        var ws = f.Workspace;
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile() with { MinecraftVersion = "1.21" };
+        var other = ws.Profile();
+        await ws.Store.SaveProfileAsync(profile);
+        await ws.Store.SaveProfileAsync(other);
+        await f.Translations.ImportAsync(profile, [f.Jar()], "uk_ua", sourceLocale: "fr_fr");
+        var draft = (await f.Translations.ReadAsync(profile.Id, "uk_ua", "demo", sourceLocale: "fr_fr"))!;
+        await f.Translations.SaveManualAsync(profile, "uk_ua", "demo", new Dictionary<string, string> { ["hello"] = "Hello %s" },
+            sourceLocale: "fr_fr", expectedFingerprint: PTenoLauncher.Infrastructure.AI.TranslationWorkspace.Fingerprint(draft));
+        var pack = await f.Translations.ExportAsync(profile, "uk_ua", 34, sourceLocale: "fr_fr");
+        var content = new ProfileContent(ws.Paths);
+        var listed = Assert.Single(await content.ListAsync(profile.Id, ProfileContentKind.ResourcePacks, profileInfo: profile));
+        Assert.Equal(Path.GetFileName(pack.Path), listed.FileName);
+        Assert.Equal(ResourcePackCompatibility.Compatible, listed.Compatibility);
+        Assert.Empty(await content.ListAsync(other.Id, ProfileContentKind.ResourcePacks, profileInfo: other));
+    }
+
+    [AvaloniaFact]
+    public async Task ShaderWorkspaceReportsMissingAndEnabledComponent()
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await services.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric);
+        await services.Store.SaveProfileAsync(profile);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(ProfileSection.Shaders);
+        await vm.WaitForWorkspaceSnapshotAsync();
+        Assert.Contains("Iris", vm.WorkspaceShaderSupport);
+        Assert.True(vm.WorkspaceFindShaderComponent);
+        var jar = Path.Combine(ws.Paths.Game(profile.Id), "mods", "iris.jar");
+        SecurityAndModsTests.CreateJar(jar, "iris");
+        await vm.RefreshVisibleWorkspaceAsync();
+        Assert.Contains("Example", vm.WorkspaceShaderSupport);
+        Assert.False(vm.WorkspaceFindShaderComponent);
+    }
+
+    [AvaloniaFact]
+    public async Task ProfileTabsFollowExactVersionsAndLoadersWhileOffline()
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await services.Store.InitializeAsync();
+        var vanilla = ws.Profile() with { Name = "Vanilla" };
+        var noShader = ws.Profile(ModLoader.NeoForge) with { Name = "No shader component", MinecraftVersion = "1.20.6" };
+        var iris = ws.Profile(ModLoader.NeoForge) with { Name = "Iris available" };
+        var unknown = ws.Profile(ModLoader.Fabric) with { Name = "Unconfirmed snapshot", MinecraftVersion = "1.21.1-pre1" };
+        foreach (var profile in new[] { vanilla, noShader, iris, unknown })
+            await services.Store.SaveProfileAsync(profile);
+        var resourceZip = SafePath.Join(ws.Paths.Root, "resource.zip");
+        WriteZip(resourceZip, "pack.mcmeta", """{"pack":{"pack_format":34,"description":"Fixture"}}""");
+        var shaderZip = SafePath.Join(ws.Paths.Root, "shader.zip");
+        WriteZip(shaderZip, "shaders/final.fsh", "void main() {}");
+        var existingShader = SafePath.Join(ws.Paths.Game(noShader.Id), "shaderpacks/existing.zip");
+        File.Copy(shaderZip, existingShader);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.Offline = true;
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            var mods = window.FindControl<Button>("ProfileModsSection")!;
+            var shaders = window.FindControl<Button>("ProfileShadersSection")!;
+            var resources = window.FindControl<Button>("ProfileResourcePacks")!;
+            var addPack = window.FindControl<Button>("WorkspaceAddPack")!;
+            var findComponent = window.FindControl<Button>("WorkspaceFindShaderComponentButton")!;
+            vm.OpenProfileWorkspace(vanilla.Id);
+            Assert.False(mods.IsVisible);
+            Assert.False(shaders.IsVisible);
+            Assert.True(resources.IsVisible);
+            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+            Assert.Equal(ProfileSection.Overview, vm.WorkspaceSection);
+            vm.ChooseWorkspaceSection(ProfileSection.ResourcePacks);
+            Assert.True(vm.WorkspacePackCatalogOffline);
+            Assert.True(addPack.IsEffectivelyEnabled);
+            await vm.ImportWorkspacePackAsync(vanilla.Id, ProfileContentKind.ResourcePacks, resourceZip);
+            Assert.Equal("resource.zip", Assert.Single(vm.WorkspaceContentRows).FileName);
+
+            vm.OpenProfileWorkspace(noShader.Id);
+            Assert.True(mods.IsVisible);
+            Assert.False(shaders.IsVisible);
+            vm.ChooseWorkspaceSection(ProfileSection.Folders);
+            Assert.True(File.Exists(Path.Combine(vm.WorkspaceFolder("shaderpacks"), "existing.zip")));
+
+            vm.OpenProfileWorkspace(iris.Id);
+            Assert.True(shaders.IsVisible);
+            vm.ChooseWorkspaceSection(ProfileSection.Shaders);
+            await vm.WaitForWorkspaceSnapshotAsync();
+            Assert.Equal("Iris", vm.WorkspaceShaderSuggestion);
+            Assert.Contains("Iris", vm.WorkspaceShaderSupport);
+            Assert.True(findComponent.IsVisible);
+            Assert.False(findComponent.IsEffectivelyEnabled);
+            Assert.True(addPack.IsEffectivelyEnabled);
+            await vm.ImportWorkspacePackAsync(iris.Id, ProfileContentKind.Shaders, shaderZip);
+            Assert.Equal("shader.zip", Assert.Single(vm.WorkspaceContentRows).FileName);
+
+            vm.SelectedProfile = iris with { MinecraftVersion = noShader.MinecraftVersion };
+            Assert.False(shaders.IsVisible);
+            Assert.True(mods.IsVisible);
+            Assert.Equal(ProfileSection.Overview, vm.WorkspaceSection);
+            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+            vm.SelectedProfile = iris with { MinecraftVersion = noShader.MinecraftVersion, Loader = ModLoader.Vanilla };
+            Assert.False(mods.IsVisible);
+            Assert.Equal(ProfileSection.Overview, vm.WorkspaceSection);
+            Assert.True(File.Exists(Path.Combine(vm.WorkspaceFolder("shaderpacks"), "shader.zip")));
+
+            vm.OpenProfileWorkspace(unknown.Id);
+            Assert.True(mods.IsVisible);
+            Assert.True(shaders.IsVisible);
+            vm.ChooseWorkspaceSection(ProfileSection.Mods);
+            Assert.True(vm.WorkspaceCompatibilityUnknown);
+            Assert.False(vm.CanUseOnlineCatalog);
+            vm.ChooseWorkspaceSection(ProfileSection.Shaders);
+            await vm.WaitForWorkspaceSnapshotAsync();
+            Assert.Equal(TextCatalog.Get("WorkspaceCompatibilityUnknown"), vm.WorkspaceShaderSupport);
+            Assert.True(addPack.IsEffectivelyEnabled);
+        }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task ShaderSearchReplacesAnOlderRequestAndShowsOfflineSeparately()
     {
         using var ws = new TestWorkspace();
         using var transport = new ShaderSearchTransport();
         using var services = new LauncherServices(ws.Paths, coreTransport: transport);
         await services.Store.InitializeAsync();
-        var profile = ws.Profile();
+        var profile = ws.Profile(ModLoader.Fabric);
         await services.Store.SaveProfileAsync(profile);
         var vm = new MainViewModel(services);
         await vm.InitializeAsync();
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(ProfileSection.Shaders);
         var dialog = new ContentCatalogDialog(vm, profile, ProfileContentKind.Shaders);
         dialog.Show();
         try
@@ -42,11 +236,18 @@ public sealed class ProfileContentTests
             await WaitForAsync(() => results.ItemCount == 1);
             Assert.True(transport.Cancelled);
             Assert.Equal("Current shader", Assert.IsType<CatalogSearchHit>(Assert.Single(results.Items)).Title);
+            query.Text = "empty";
+            await WaitForAsync(() => dialog.FindControl<TextBlock>("ContentSearchStatus")!.Text == TextCatalog.Get("CatalogSearchEmpty"));
+            Assert.True(vm.WorkspaceShaders && vm.WorkspaceCanImportPack);
+            query.Text = "unavailable";
+            await WaitForAsync(() => dialog.FindControl<TextBlock>("ContentSearchStatus")!.Text == TextCatalog.Get("CatalogSearchFailed"));
+            Assert.True(vm.WorkspaceShaders && vm.WorkspaceCanImportPack);
             vm.Offline = true;
             query.Text = "offline";
             await WaitForAsync(() => dialog.FindControl<TextBlock>("ContentSearchStatus")!.Text ==
                 PTenoLauncher.Desktop.Localization.TextCatalog.Get("CatalogSearchOffline"));
-            Assert.Equal(2, transport.Requests);
+            Assert.Equal(4, transport.Requests);
+            Assert.True(vm.WorkspaceShaders && vm.WorkspaceCanImportPack);
         }
         finally { dialog.Close(); }
     }
@@ -68,6 +269,8 @@ public sealed class ProfileContentTests
                 try { await Task.Delay(Timeout.Infinite, ct); }
                 catch (OperationCanceledException) { Cancelled = true; throw; }
             }
+            if (query.Contains("query=empty", StringComparison.Ordinal)) return Response("""{"hits":[]}""");
+            if (query.Contains("query=unavailable", StringComparison.Ordinal)) return new(HttpStatusCode.ServiceUnavailable);
             return Response("""{"hits":[{"project_id":"Current","slug":"current","title":"Current shader","description":"fixture"}]}""");
         }
     }
@@ -214,7 +417,7 @@ public sealed class ProfileContentTests
         });
         using var services = new LauncherServices(ws.Paths, coreTransport: transport);
         await services.Store.InitializeAsync();
-        var profile = ws.Profile() with { Name = "T1" };
+        var profile = ws.Profile(shaders ? ModLoader.Fabric : ModLoader.Vanilla) with { Name = "T1" };
         var other = ws.Profile() with { Name = "T2" };
         await services.Store.SaveProfileAsync(profile);
         await services.Store.SaveProfileAsync(other);

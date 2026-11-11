@@ -17,7 +17,7 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
     public Task<ModInspection> InspectAsync(string file, CancellationToken ct = default) =>
         InspectPayloadAsync(file, Path.GetFileName(file), ct);
 
-    internal async Task<ModInspection> InspectPayloadAsync(string file, string fileName, CancellationToken ct)
+    internal async Task<ModInspection> InspectPayloadAsync(string file, string fileName, CancellationToken ct, string side = "client")
     {
         SafePath.RejectLinks(file);
         var info = new FileInfo(file);
@@ -28,10 +28,10 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         stream.Position = 0;
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, true);
         SafeArchive.Validate(zip, paths.Cache);
-        return await InspectArchiveAsync(zip, fileName, hash, info.Length, new NativeBudget(), 0, null, ct);
+        return await InspectArchiveAsync(zip, fileName, hash, info.Length, new NativeBudget(), 0, null, ct, side);
     }
     private async Task<ModInspection> InspectArchiveAsync(ZipArchive zip, string fileName, string hash, long size,
-        NativeBudget budget, int depth, ModLoader? nativeContext, CancellationToken ct)
+        NativeBudget budget, int depth, ModLoader? nativeContext, CancellationToken ct, string side = "client")
     {
         string? id = null, name = null, version = null; ModLoader? loader = null; string environment = "unknown";
         var metadataWarnings = new List<string>();
@@ -81,7 +81,7 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
         }
         if (quiltInfo is not null) provided.AddRange(quiltInfo.Provided);
         FabricModMetadata? fabricMetadata = null;
-        if (fabric is not null && nativeContext is null) fabricMetadata = await ReadEmbeddedFabricAsync(zip, 0, new EmbeddedBudget(), provided, metadataWarnings, ct);
+        if (fabric is not null && nativeContext is null) fabricMetadata = await ReadEmbeddedFabricAsync(zip, 0, new EmbeddedBudget(), provided, metadataWarnings, ct, side);
         else if (fabric is not null) metadataWarnings.Add("Nested Fabric metadata requires a separate native-loader adapter; cross-loader assumptions are disabled.");
         dependencies.AddRange(requirements.Where(r => r.Kind == "required").Select(r => r.Id));
         var context = loader is ModLoader.Quilt or ModLoader.Forge or ModLoader.NeoForge ? loader : nativeContext;
@@ -246,9 +246,16 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
                     }
                     finally { if (File.Exists(part)) File.Delete(part); }
                 }
-                if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(cached, mod.Sha256, "SHA256", mod.Size, ct)) throw new InvalidDataException("Пошкоджений кеш JAR.");
+                await using var verifiedCache = File.OpenRead(cached);
+                if (!await PTenoLauncher.Infrastructure.Network.VerifiedDownloader.VerifyAsync(cached, mod.Sha256, "SHA256", mod.Size, ct))
+                    throw new InvalidDataException("JAR cache changed during installation.");
+                string? sha512 = null;
+                if (ReadableName.LooksTechnical(Path.GetFileNameWithoutExtension(mod.FileName)))
+                {
+                    sha512 = Convert.ToHexStringLower(await System.Security.Cryptography.SHA512.HashDataAsync(verifiedCache, ct));
+                }
                 var target = SafePath.Join(game, ChooseInstallPath(game, mod.FileName, mod.Sha256, reservedNames,
-                    (mod.Id ?? "Mod") + (mod.Version is null ? "" : "-" + mod.Version)));
+                    ModName(mod), sha512));
                 var temp = target + ".pending-" + transaction.ToString("N");
                 var origin = item.Inspection.SourceStatus switch
                 {
@@ -265,27 +272,43 @@ public sealed partial class LocalModManager(LauncherPaths paths, ILauncherStore 
             foreach (var (temp, target) in staged) File.Move(temp, target, false);
             await AtomicFile.WriteJsonAsync(journalPath, new ModInstallJournal(transaction, profile.Id, "Committed", journalEntries), CancellationToken.None);
             await new ModInventoryStore(paths).RecordCommittedAsync(profile.Id, journalEntries.Select(e => new InstalledModFile(e.Target, e.Sha256, e.Size, e.Origin)).ToArray(), CancellationToken.None);
-            await store.AddHistoryAsync(profile.Id, "mods.installed", string.Join(", ", items.Select(i => i.Inspection.FileName)), CancellationToken.None);
+            await store.AddHistoryAsync(profile.Id, "mods.installed", string.Join(", ", journalEntries.Select(i => Path.GetFileName(i.Target))), CancellationToken.None);
             File.Delete(journalPath);
         }
         catch { if (File.Exists(journalPath)) await RecoverJournalAsync(profile, journalPath, CancellationToken.None); throw; }
         finally { foreach (var (temp, _) in staged) if (File.Exists(temp)) File.Delete(temp); }
     }
 
-    internal static string ChooseInstallPath(string game, string fileName, string hash, HashSet<string> reserved, string fallback = "Mod")
+    internal static string ModName(ModInspection mod) => (mod.Id ?? mod.Name ?? "Mod") + (mod.Version is null ? "" : "-" + mod.Version);
+
+    internal static string JarName(string fileName, string? sha256, string? sha512, string fallback = "Mod")
     {
-        if (fileName != Path.GetFileName(fileName) || !fileName.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+        var disabled = fileName.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase);
+        var jar = disabled ? fileName[..^".disabled".Length] : fileName;
+        if (fileName != Path.GetFileName(fileName) || !jar.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Invalid JAR filename.");
+        var original = Path.GetFileNameWithoutExtension(jar);
+        var stem = ReadableName.Stem(ReadableName.StripDigest(original, sha256, sha512) ?? original, ReadableName.Stem(fallback, "Mod", 180), 180);
+        return stem + (disabled ? fileName[^".jar.disabled".Length..] : Path.GetExtension(jar));
+    }
+
+    internal static string ChooseInstallPath(string game, string fileName, string? hash, HashSet<string> reserved, string fallback = "Mod", string? sha512 = null)
+    {
         _ = SafePath.Join(game, "mods/" + fileName);
-        var original = Path.GetFileNameWithoutExtension(fileName);
-        var stem = ReadableName.Stem(ReadableName.StripDigest(original, hash) ?? original, ReadableName.Stem(fallback, "Mod"), 180);
-        var extension = Path.GetExtension(fileName);
-        for (var index = 0; index < 2048; index++)
+        var name = JarName(fileName, hash, sha512, fallback);
+        var extension = name.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase) ? name[^".jar.disabled".Length..] : Path.GetExtension(name);
+        var stem = name[..^extension.Length];
+        var folder = SafePath.Join(game, "mods");
+        var occupied = Directory.Exists(folder) ? Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string?>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 1; index <= 2048; index++)
         {
-            var suffix = index == 0 ? "" : index == 1 ? "-" + hash[..8] : $"-{hash[..8]}-{index}";
-            var relative = "mods/" + stem + suffix + extension;
-            var target = SafePath.Join(game, relative);
-            if (!File.Exists(target) && !Directory.Exists(target) && reserved.Add(relative)) return relative;
+            var candidate = stem + (index == 1 ? "" : $"-{index}") + extension;
+            var otherState = extension.Length > 4 ? candidate[..^".disabled".Length] : candidate + ".disabled";
+            var relative = "mods/" + candidate;
+            if (occupied.Contains(candidate) || occupied.Contains(otherState) || reserved.Contains("mods/" + otherState) || !reserved.Add(relative)) continue;
+            _ = SafePath.Join(game, relative);
+            return relative;
         }
         throw new IOException("No free name for the JAR.");
     }

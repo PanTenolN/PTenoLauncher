@@ -21,6 +21,7 @@ public sealed partial class ProfileEditor : Window
     public ProfileEditor()
     {
         InitializeComponent();
+        MemoryInput.Attach(this.FindControl<TextBox>("ProfileMemoryInput")!);
         this.FindControl<ProfileImportView>("NewProfileImport")!.Imported += () => Close(true);
         Opened += async (_, _) =>
         {
@@ -94,6 +95,7 @@ public sealed partial class ProfileEditor : Window
     private async void Save(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm || vm.IsBusy) return;
+        vm.NormalizeProfileMemory();
         vm.SetProfileValidation(true);
         if (!vm.ProfileFieldsComplete)
         {

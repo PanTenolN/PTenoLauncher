@@ -10,6 +10,12 @@ internal static class Program
 {
     internal static LauncherServices? Services { get; private set; }
     internal static string[] Arguments { get; private set; } = [];
+    internal static bool TraceStartup => Arguments.Contains("--trace-startup", StringComparer.Ordinal);
+    internal static void WriteStartupSpan(string stage, long started)
+    {
+        if (TraceStartup)
+            Console.WriteLine(FormattableString.Invariant($"startup {stage} {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F2} ms"));
+    }
     [STAThread]
     public static int Main(string[] args)
     {

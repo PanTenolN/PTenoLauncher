@@ -87,7 +87,7 @@ public sealed partial class PackExportDialog : Window
         {
             var file = await StorageProvider.SaveFilePickerAsync(new()
             {
-                Title = TextCatalog.Get("ExportSave"), SuggestedFileName = "Minecraft-" + plan.Minecraft,
+                Title = TextCatalog.Get("ExportSave"), SuggestedFileName = plan.SuggestedFileName,
                 DefaultExtension = "mrpack", FileTypeChoices = [new("Modrinth ZIP (.mrpack)") { Patterns = ["*.mrpack"] }]
             });
             destination = file?.TryGetLocalPath();

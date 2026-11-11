@@ -17,7 +17,7 @@ public sealed partial class MainViewModel
     public bool AutoLauncherUpdates { get => autoLauncherUpdates; set => Set(ref autoLauncherUpdates, value); }
     public bool PreviewLauncherUpdates { get => previewLauncherUpdates; set => Set(ref previewLauncherUpdates, value); }
     public bool LauncherRecoveryRequired { get => launcherRecoveryRequired; private set => Set(ref launcherRecoveryRequired, value); }
-    public bool CanInstallLauncherUpdate => IsIdle && (launcherOffer is not null || LauncherRecoveryRequired);
+    public bool CanInstallLauncherUpdate => IsIdle && !ServerOperationActive && (launcherOffer is not null || LauncherRecoveryRequired);
     public string LauncherUpdateStatus => TextCatalog.Get(launcherUpdateCode);
     public string LauncherUpdateButtonText => TextCatalog.Get(LauncherRecoveryRequired ? "UpdaterRecover" : "UpdaterUpdate");
     public string LauncherUpdateSummary => launcherOffer is { } offer
@@ -70,7 +70,7 @@ public sealed partial class MainViewModel
     public void CancelLauncherUpdateCheck() { launcherCheck?.Cancel(); }
     public async Task ApplyLauncherUpdateAsync()
     {
-        if (IsBusy || IsGameLaunchActive) { SetLauncherUpdateStatus("UpdaterBusy"); return; }
+        if (IsBusy || IsGameLaunchActive || ServerOperationActive) { SetLauncherUpdateStatus("UpdaterBusy"); return; }
         bool handoff = false; string failure = "UpdaterHelper";
         await RunAsync(async ct =>
         {

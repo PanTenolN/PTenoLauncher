@@ -1,5 +1,9 @@
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using PTenoLauncher.Infrastructure.Network;
 using Xunit;
@@ -59,4 +63,40 @@ public sealed class NetworkTests
     [InlineData("https://localhost/file")][InlineData("https://127.0.0.1/file")][InlineData("https://libraries.minecraft.net:444/file")]
     [InlineData("https://user@libraries.minecraft.net/file")]
     public void UntrustedDownloadSourcesAreRejected(string url) => Assert.Throws<InvalidDataException>(() => NetworkPolicy.ValidateDownloadUri(new(url)));
+
+    [Theory]
+    [InlineData("http://fill.papermc.io/v3/projects/paper", DownloadSource.Paper)]
+    [InlineData("https://fill.papermc.io/v3/projects/paper-fork", DownloadSource.Paper)]
+    [InlineData("https://api.purpurmc.org/v2/purpur?secret=abc", DownloadSource.Purpur)]
+    [InlineData("https://api.minecraftservices.com/minecraft/profile/lookup/name/Player?token=abc", DownloadSource.MinecraftProfile)]
+    public void ServerCatalogAndProfileRejectNoncanonicalSources(string url, DownloadSource source) =>
+        Assert.Throws<InvalidDataException>(() => TrustedSources.Validate(new(url), source));
+
+    [Fact]
+    public async Task DefaultHttpTransportRejectsAnUntrustedCertificate()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(names.Build());
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var handshake = AcceptAsync();
+        using var client = NetworkPolicy.CreateHttpClient();
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetAsync($"https://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/", timeout.Token));
+        Assert.Equal(HttpRequestError.SecureConnectionError, error.HttpRequestError);
+        await handshake;
+
+        async Task AcceptAsync()
+        {
+            using var connection = await listener.AcceptTcpClientAsync(timeout.Token);
+            await using var tls = new SslStream(connection.GetStream());
+            try { await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = certificate }, timeout.Token); }
+            catch (Exception error) when (error is AuthenticationException or IOException) { }
+        }
+    }
 }

@@ -2,7 +2,9 @@
         x:Class="PTenoLauncher.Desktop.Dialogs.ContentActionDialog" Width="660" SizeToContent="Height" MaxHeight="640" WindowStartupLocation="CenterOwner">
   <StackPanel Margin="18" Spacing="9">
     <TextBlock Name="ItemTitle" FontWeight="SemiBold" TextWrapping="Wrap"/>
-    <SelectableTextBlock Name="ItemSource" TextWrapping="Wrap"/>
+    <ScrollViewer MaxHeight="310">
+      <SelectableTextBlock Name="ItemSource" TextWrapping="Wrap"/>
+    </ScrollViewer>
     <TextBlock Text="{DynamicResource Text.ContentDestination}"/>
     <SelectableTextBlock Name="ItemDestination" TextWrapping="Wrap"/>
     <CheckBox Name="BackupWorld" IsVisible="False" IsChecked="True" Content="{DynamicResource Text.ContentBackupWorld}"/>

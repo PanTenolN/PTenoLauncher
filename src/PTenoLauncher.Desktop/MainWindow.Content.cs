@@ -5,12 +5,33 @@ using Avalonia.Platform.Storage;
 using PTenoLauncher.Desktop.Dialogs;
 using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Desktop.ViewModels;
+using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Desktop;
 
 public sealed partial class MainWindow
 {
+    private async void ToggleWorkspacePack(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false, WorkspaceResourcePacks: true,
+            WorkspaceProfileId: { } id, WorkspaceContentSelection: { Enabled: { } current } entry } vm) return;
+        if (!current && entry.Compatibility != ResourcePackCompatibility.Compatible)
+        {
+            var confirm = new ContentActionDialog(vm.WorkspacePackAction, vm.WorkspacePackAction, vm.WorkspacePackStatus,
+                entry.FileName, vm.ActiveName);
+            if (!(await confirm.ShowDialog<bool?>(this)).HasValue) return;
+        }
+        await vm.SetWorkspacePackEnabledAsync(id, entry, !current);
+    }
+
+    private async void FindShaderComponent(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel { WorkspaceFindShaderComponent: true, CanUseOnlineCatalog: true,
+            WorkspaceShaderSuggestion: { } component, SelectedProfile: { } profile } vm && vm.WorkspaceProfileId == profile.Id)
+            await new ModCatalogDialog(vm, profile, initialQuery: component).ShowDialog<bool>(this);
+    }
+
     private async void MoveWorkspaceFolder(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false, WorkspaceProfileId: { } id } vm) return;
@@ -105,7 +126,7 @@ public sealed partial class MainWindow
                 directory = selected;
             }
             if (vm.WorkspaceProfileId != id || vm.WorkspaceContentKind != kind) return;
-            var plan = remove ? vm.Services.Content.PlanRemove(id, kind, item) : vm.Services.Content.PlanCopy(id, kind, item, directory);
+            var plan = remove ? await vm.Services.Content.PlanRemoveAsync(id, kind, item) : vm.Services.Content.PlanCopy(id, kind, item, directory);
             var backup = await new ContentActionDialog(plan, remove).ShowDialog<bool?>(this);
             if (backup.HasValue) await vm.ApplyWorkspaceContentAsync(plan, remove, backup.Value);
         }

@@ -18,6 +18,7 @@ public sealed class ModrinthIntegrationTests
         public bool Tamper { get; set; }
         public string? BadFileName { get; set; }
         public string? BadUrl { get; set; }
+        public bool DigestNames { get; set; }
         public int CdnRequests { get; private set; }
         public Action? BeforeFirstVersionResponse { get; set; }
         private readonly Dictionary<string,byte[]> bytes = new();
@@ -37,7 +38,8 @@ public sealed class ModrinthIntegrationTests
                 id=id+"1",project_id=id,version_number=conflictingConfig && id == "B" ? "2.0.0" : "1.0.0",name=id+" release",date_published="2026-01-01T00:00:00Z",version_type="release",status="listed",
                 game_versions=new[]{"1.21.1"},loaders=new[]{"fabric"},
                 dependencies=id=="A" && !conflictingConfig ? new[]{Dependency("B")} : id=="C" ? [Dependency("B"), Dependency("D")] : [],
-                files=new[]{new {filename=BadFileName??id+".jar",url=BadUrl??"https://cdn.modrinth.com/data/"+id+".jar",size=bytes[id].Length,primary=true,hashes=new{sha512=Convert.ToHexString(SHA512.HashData(bytes[id])).ToLowerInvariant()}}}
+                files=new[]{new {filename=BadFileName ?? (DigestNames ? Convert.ToHexStringLower(SHA512.HashData(bytes[id])) + "-" +
+                    (id == "A" ? "jei-1.21.1-fabric-19.64.0.455.jar" : "Mezz Config.jar") : id+".jar"),url=BadUrl??"https://cdn.modrinth.com/data/"+id+".jar",size=bytes[id].Length,primary=true,hashes=new{sha512=Convert.ToHexString(SHA512.HashData(bytes[id])).ToLowerInvariant()}}}
             };
             Handler=new StubHandler(request => {
                 var path=request.RequestUri!.AbsolutePath;
@@ -75,6 +77,22 @@ public sealed class ModrinthIntegrationTests
         }
         public void Dispose()=>http.Dispose();
     }
+    [Fact] public async Task VerifiedDigestNamesStayInCacheForBothCatalogRootAndDependency()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric) with { Name = "T1" };
+        await ws.Store.SaveProfileAsync(profile);
+        using var fixture = new Fixture(ws) { DigestNames = true };
+        var plan = await fixture.Installer.PreviewAsync(profile, [new("A")]);
+        Assert.True(plan.Resolution.CanInstall, string.Join("\n", plan.Resolution.Blockers));
+        await fixture.Installer.InstallAsync(profile, plan, true);
+        var files = Directory.GetFiles(Path.Combine(ws.Paths.Game(profile.Id), "mods")).Order(StringComparer.Ordinal).ToArray();
+        foreach (var file in files) Console.WriteLine("Physical installed path: " + file);
+        Assert.Equal(new[] { "Mezz Config.jar", "jei-1.21.1-fabric-19.64.0.455.jar" }, files.Select(Path.GetFileName));
+        Assert.Equal(2, Directory.GetFiles(Path.Combine(ws.Paths.Cache, "modrinth", "files"), "*.jar", SearchOption.AllDirectories).Length);
+    }
+
     [Fact] public async Task SharedRequiredDependencyAndIdenticalCatalogArtifactsAreDownloadedOnlyOnce()
     {
         using var ws = new TestWorkspace();

@@ -68,6 +68,28 @@ public sealed class MrpackFixture : IDisposable
 }
 public sealed class MrpackTests
 {
+    [Fact] public async Task ImportedFilesUseVerifiedNamesAndKeepArchiveOriginal()
+    {
+        using var fixture = new MrpackFixture();
+        var ws = fixture.Workspace;
+        await ws.Store.InitializeAsync();
+        var active = MrpackFixture.Jar("example");
+        var disabled = MrpackFixture.Jar("disabled");
+        var oldName = Convert.ToHexStringLower(SHA512.HashData(active)) + "-Example.jar";
+        var oldDisabled = Convert.ToHexStringLower(SHA256.HashData(disabled)) + "-Disabled.jar.disabled";
+        var pack = fixture.Pack(MrpackFixture.Index(loader: "fabric-loader"),
+            ("overrides/mods/" + oldName, active), ("overrides/mods/" + oldDisabled, disabled));
+        var sourceHash = await MrpackReader.HashFile(pack, default);
+        var preview = await fixture.Importer.Reader.PreviewAsync(pack);
+        var result = await fixture.Importer.ImportAsync(preview, true);
+        var folder = SafePath.Join(ws.Paths.Game(result.Profile.Id), "mods");
+        Assert.Equal(new[] { "Disabled.jar.disabled", "Example.jar" }, Directory.GetFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.Equal(sourceHash, await MrpackReader.HashFile(pack, default));
+        Assert.Contains(result.Receipt.Files, entry => entry.RelativePath == "mods/Example.jar");
+        Assert.Equal("Synthetic pack", Path.GetFileName(ws.Paths.Profile(result.Profile.Id)));
+        Console.WriteLine($"Physical import paths: {folder}\\{oldName} → {folder}\\Example.jar");
+    }
+
     [Fact] public async Task MinimalPackIsPublishedOnlyAsNewContentProfileNotInstalledGame()
     {
         using var f = new MrpackFixture(); await f.Workspace.Store.InitializeAsync();

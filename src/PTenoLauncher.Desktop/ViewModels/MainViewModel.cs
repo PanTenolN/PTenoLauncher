@@ -10,6 +10,7 @@ namespace PTenoLauncher.Desktop.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly LauncherServices services;
+    internal PTenoLauncher.Infrastructure.Minecraft.VanillaServerManager ServerManager { get; }
     private readonly List<AsyncCommand> commands = [];
     private CancellationTokenSource? operation;
     public ObservableCollection<GameProfile> Profiles { get; } = [];
@@ -38,7 +39,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (WorkspaceProfileId is { } workspaceId && value?.Id != workspaceId) return;
             if (TranslationDirty && selectedProfile?.Id != value?.Id) { Status = TextCatalog.Get("AiUxUnsaved"); Changed(nameof(SelectedProfile)); return; }
-            var priorLoader = selectedProfile?.Loader;
+            var previous = selectedProfile;
             if (!Set(ref selectedProfile, value)) return;
             if (value is not null)
             {
@@ -51,8 +52,17 @@ public sealed partial class MainViewModel : ObservableObject
             ClearRemotePlan(); RemoteSearchResults.Clear(); RemoteVersions.Clear(); SelectedRemoteProject = null; SelectedRemoteVersion = null;
             Cart.Clear(); CartSummary = TextCatalog.Get("Message000"); UnknownSourceAccepted = false;
             readinessReport = null; Readiness = TextCatalog.Get("Message006");
+            RefreshInstallationAction();
             Changed(nameof(ProfileCount)); Changed(nameof(UsesSavedLoaderVersion)); Changed(nameof(CanInstallGame)); RefreshProfileFields(); RefreshProfileConsole(); SelectionChanged();
-            if (WorkspaceProfileId is { } workspace && priorLoader != value?.Loader) _ = InvalidateWorkspaceModsAsync(workspace);
+            if (IsProfileWorkspace && WorkspaceProfileId is not null)
+            {
+                if (previous?.Loader != value?.Loader || previous?.MinecraftVersion != value?.MinecraftVersion)
+                {
+                    WorkspaceShaderSupport = "";
+                    workspaceHasShaderComponent = false;
+                }
+                RefreshWorkspaceView();
+            }
         }
     }
     private VersionEntry? selectedVersion;
@@ -83,7 +93,7 @@ public sealed partial class MainViewModel : ObservableObject
     private string clientId = "";
     public string ClientId { get => clientId; set => Set(ref clientId, value); }
     private bool busy;
-    public bool IsBusy { get => busy; private set { Set(ref busy, value); Changed(nameof(IsIdle)); Changed(nameof(CanUseOnlineContent)); Changed(nameof(CanUseOnlineCatalog)); Changed(nameof(CanAddCatalogVersion)); Changed(nameof(CanCommitCatalog)); Changed(nameof(CanLeaveWorkspace)); Changed(nameof(CanInstallGame)); Changed(nameof(CanCancelOperation)); Changed(nameof(CanMarkWorking)); foreach (var command in commands) command.Refresh(); CancelCommand.Refresh(); RefreshAiText(); } }
+    public bool IsBusy { get => busy; private set { Set(ref busy, value); Changed(nameof(IsIdle)); Changed(nameof(CanUseOnlineContent)); Changed(nameof(CanUseOnlineCatalog)); Changed(nameof(CanAddCatalogVersion)); Changed(nameof(CanCommitCatalog)); Changed(nameof(CanLeaveWorkspace)); Changed(nameof(CanInstallGame)); Changed(nameof(CanCancelOperation)); Changed(nameof(CanMarkWorking)); RefreshServerControls(); foreach (var command in commands) command.Refresh(); CancelCommand.Refresh(); RefreshAiText(); } }
     public bool IsIdle => !IsBusy;
     public string ModeText => Offline ? TextCatalog.Get("Message001") : TextCatalog.Get("Message002");
     public string ProfileCount => TextCatalog.Format("ProfileCount", Profiles.Count);
@@ -102,18 +112,23 @@ public sealed partial class MainViewModel : ObservableObject
     public bool UnknownSourceAccepted { get => unknownSourceAccepted; set { if (Set(ref unknownSourceAccepted, value)) { Changed(nameof(CanCommitCatalog)); Changed(nameof(CartNextStep)); } } }
     public string DataRoot => services.Paths.Root;
     public MainViewModel(LauncherServices services, ModUpdateManager? modUpdates = null, ILauncherUpdateWorkflow? launcherUpdates = null)
+        : this(services, services.Servers, modUpdates, launcherUpdates) { }
+
+    internal MainViewModel(LauncherServices services, PTenoLauncher.Infrastructure.Minecraft.VanillaServerManager serverManager,
+        ModUpdateManager? modUpdates = null, ILauncherUpdateWorkflow? launcherUpdates = null)
     {
         this.launcherUpdates = launcherUpdates ?? services.LauncherUpdates;
         this.modUpdates = modUpdates ?? services.ModUpdates;
         this.services = services;
-        AsyncCommand Command(Func<CancellationToken, Task> action)
+        ServerManager = serverManager;
+        AsyncCommand Command(Func<CancellationToken, Task> action, Func<bool>? enabled = null)
         {
-            var command = new AsyncCommand(() => RunAsync(action), () => !IsBusy);
+            var command = new AsyncCommand(() => RunAsync(action), () => !IsBusy && (enabled?.Invoke() ?? true));
             commands.Add(command); return command;
         }
         CancelCommand = new(async () => { if (operation is not null) await operation.CancelAsync(); }, () => CanCancelOperation);
         SaveCommand = Command(SaveProfileAsync);
-        BackupCommand = Command(async ct => { var file = await services.Backups.CreateAsync(RequireProfile(), ct); Status = TextCatalog.Get("Message007") + file; });
+        BackupCommand = Command(async ct => { var file = await services.Backups.CreateAsync(RequireProfile(), ct, TextCatalog.Get("Backup")); Status = TextCatalog.Get("Message007") + file; });
         NewCommand = Command(_ =>
         {
             SelectedProfile = null;
@@ -144,7 +159,7 @@ public sealed partial class MainViewModel : ObservableObject
             RefreshAccounts(); Status = TextCatalog.Get("Message012");
         });
         SignOutCommand = Command(async ct => { await services.Authentication.SignOutAsync(ct); RefreshAccounts(); Status = TextCatalog.Get("Message013"); });
-        CheckCommand = Command(async ct => { readinessReport = await services.Readiness.CheckAsync(RequireProfile(), ct); Changed(nameof(Readiness)); RefreshHomeAction(); Status = TextCatalog.Get("Message014"); });
+        CheckCommand = Command(async ct => { readinessReport = await services.Readiness.CheckAsync(RequireProfile(), ct); Changed(nameof(Readiness)); RefreshInstallationAction(); Status = TextCatalog.Get("Message014"); });
         InstallCommand = Command(async ct =>
         {
             var profile = RequireProfile();
@@ -162,7 +177,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (result.Loader == ModLoader.Fabric) FabricStatus = TextCatalog.Get("Message016") + result.LoaderVersion;
             readinessReport = null;
             Changed(nameof(Readiness));
-            RefreshHomeAction();
+            RefreshInstallationAction();
             Status = TextCatalog.Format("GameInstalled", result.Version, result.Files.Count, result.JavaMajor);
         });
         LaunchCommand = Command(async ct =>
@@ -170,12 +185,16 @@ public sealed partial class MainViewModel : ObservableObject
             var profile = RequireProfile();
             Status = TextCatalog.Get("Message017");
             WorkingConfiguration? candidate = null;
-            var exit = await RunProfileConsoleAsync(profile.Id,
-                (output, started, logOpened, token) => services.Launcher.LaunchAsync(profile, token, output, started, logOpened,
-                    RefreshConnectivityAsync, captured => candidate = captured), ct);
-            if (profileRuns.TryGetValue(profile.Id, out var run)) run.WorkingCandidate = candidate;
-            Status = TextCatalog.Format("GameExit", exit);
-        });
+            try
+            {
+                var exit = await RunProfileConsoleAsync(profile.Id,
+                    (output, started, logOpened, token) => services.Launcher.LaunchAsync(profile, token, output, started, logOpened,
+                        RefreshConnectivityAsync, captured => candidate = captured), ct);
+                if (profileRuns.TryGetValue(profile.Id, out var run)) run.WorkingCandidate = candidate;
+                Status = TextCatalog.Format("GameExit", exit);
+            }
+            finally { RefreshInstallationAction(); }
+        }, () => HomeShowsPlay);
         Cart.CollectionChanged += (_, _) => { UnknownSourceAccepted = false; InvalidateModPlan(); Changed(nameof(CatalogInstallLabel)); };
         InstallCartCommand = Command(InstallCombinedAsync);
     }
@@ -260,6 +279,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task SaveProfileAsync(CancellationToken ct)
     {
         var creating = SelectedProfile is null;
+        NormalizeProfileMemory();
         if (!int.TryParse(Memory, out var ram)) throw new ArgumentException(TextCatalog.Get("Message023"));
         if (!ProfileFieldsComplete) throw new InvalidOperationException(TextCatalog.Get("ProfileFieldsMissing"));
         if (SelectedProfile is not null && SelectedProfile.MinecraftVersion != VersionId &&
@@ -279,9 +299,16 @@ public sealed partial class MainViewModel : ObservableObject
         SelectedProfile = Profiles.Single(x => x.Id == p.Id); Status = TextCatalog.Get("Message025");
         if (creating) await PrepareProfileJavaAsync(p, ct);
     }
+
+    internal void NormalizeProfileMemory()
+    {
+        if (MemoryInput.TryNormalize(Memory, out var value)) Memory = value.ToString(CultureInfo.InvariantCulture);
+    }
     private async Task ReloadProfilesAsync(CancellationToken ct)
     {
-        allProfiles = await services.Store.GetProfilesAsync(ct); ApplyProfileFilter();
+        allProfiles = await services.Store.GetProfilesAsync(ct);
+        await ReloadOrganizationAsync(ct);
+        ApplyProfileFilter();
     }
     private void SetCatalog(VersionCatalog catalog)
     {

@@ -1,5 +1,11 @@
 using Microsoft.Data.Sqlite;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using PTenoLauncher.Core;
+using PTenoLauncher.Desktop;
+using PTenoLauncher.Desktop.ViewModels;
 using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Mods;
 using PTenoLauncher.Infrastructure.Storage;
@@ -22,6 +28,55 @@ public sealed class TestWorkspace : IDisposable
 }
 public sealed class StorageTests
 {
+    [AvaloniaFact]
+    public async Task ProfileNameReviewAppliesOnlyAConfirmedVerifiedChoice()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric) with { Name = "T1" };
+        await ws.Store.SaveProfileAsync(profile);
+        var mods = SafePath.Join(ws.Paths.Game(profile.Id), "mods");
+        var readable = SafePath.Join(mods, "Chosen.jar");
+        var bytes = ModUpdateTests.Fixture.Jar("chosen", "1.0.0");
+        var old = SafePath.Join(mods, Convert.ToHexStringLower(System.Security.Cryptography.SHA512.HashData(bytes)) + "-Chosen.jar");
+        var unknown = SafePath.Join(mods, new string('f', 64) + "-Unknown.jar");
+        await File.WriteAllBytesAsync(old, bytes);
+        await File.WriteAllBytesAsync(unknown, ModUpdateTests.Fixture.Jar("other", "1.0.0"));
+        using var services = new LauncherServices(ws.Paths);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.OpenProfileWorkspace(profile.Id);
+        vm.ChooseWorkspaceSection(ProfileSection.Settings);
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            window.FindControl<Button>("OrganizeProfileName")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            for (var attempt = 0; attempt < 300 && window.OwnedWindows.Count == 0; attempt++) await Task.Delay(10);
+            var dialog = Assert.Single(window.OwnedWindows);
+            var list = dialog.GetVisualDescendants().OfType<ListBox>().Single(control => control.Name == "NameReviewRows");
+            var confirm = dialog.GetVisualDescendants().OfType<Button>().Single(control => control.Name == "ApplyProfileName");
+            Assert.Equal(2, list.ItemCount);
+            var verified = StringComparer.OrdinalIgnoreCase.Compare(old, unknown) < 0 ? 0 : 1;
+            list.SelectedIndex = 1 - verified;
+            Assert.False(confirm.IsEnabled);
+            list.SelectedIndex = verified;
+            Assert.True(confirm.IsEnabled);
+            Assert.True(File.Exists(old));
+            Assert.False(File.Exists(readable));
+            confirm.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            for (var attempt = 0; attempt < 300 && (!File.Exists(readable) || vm.IsBusy || window.OwnedWindows.Count == 0); attempt++) await Task.Delay(10);
+            Assert.False(File.Exists(old));
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(readable));
+            Assert.True(File.Exists(unknown));
+        }
+        finally
+        {
+            foreach (var dialog in window.OwnedWindows.ToArray()) dialog.Close();
+            window.Close();
+        }
+    }
+
     [Fact]
     public async Task StagingCreatesItsParentAndFailedProfilePlacementRollsBackTheDatabase()
     {
@@ -59,6 +114,9 @@ public sealed class StorageTests
         await File.WriteAllBytesAsync(SafePath.Join(game, old), bytes);
         var baseline = new ModInventoryStore(ws.Paths);
         await baseline.RecordCommittedAsync(profile.Id, [new(old, hash, bytes.Length, "local")]);
+        var pinFile = SafePath.Join(ws.Paths.Profile(profile.Id), "mod-pins.json");
+        var sha512 = Convert.ToHexStringLower(System.Security.Cryptography.SHA512.HashData(bytes));
+        await AtomicFile.WriteJsonAsync(pinFile, new ModPinSet(profile.Id, [new(new(old, hash, sha512, bytes.Length), null)]));
         var renamer = new ProfileFileRenamer(ws.Paths, ws.Store, new(ws.Paths, ws.Store), new(ws.Paths));
         using (new ProfileUsage(ws.Paths).Acquire(profile.Id))
             await Assert.ThrowsAsync<InvalidOperationException>(() => renamer.PreviewAsync(profile.Id, old));
@@ -70,6 +128,19 @@ public sealed class StorageTests
         await Assert.ThrowsAsync<IOException>(() => renamer.ApplyAsync(plan));
         Assert.True(File.Exists(plan.Source));
         Assert.Equal(old, Assert.Single((await baseline.ReadAsync(profile.Id))!.Files).RelativePath);
+        Assert.Equal(old, Assert.Single((await AtomicFile.ReadJsonAsync<ModPinSet>(pinFile))!.Pins).File.Path);
+        FileStream? held = null;
+        renamer.FaultAfterMove = () =>
+        {
+            held = new FileStream(plan.Target, FileMode.Open, FileAccess.Read, FileShare.None);
+            throw new IOException("interrupted fixture");
+        };
+        try { await Assert.ThrowsAsync<IOException>(() => renamer.ApplyAsync(plan)); }
+        finally { held?.Dispose(); }
+        Assert.True(File.Exists(ProfileFileRenamer.PendingPath(ws.Paths, profile.Id)));
+        await renamer.RecoverAsync(profile.Id);
+        Assert.True(File.Exists(plan.Source));
+        Assert.False(File.Exists(plan.Target));
         renamer.FaultAfterMove = null;
         await renamer.ApplyAsync(plan);
         var reopened = new LauncherPaths(ws.Paths.Root);
@@ -77,10 +148,66 @@ public sealed class StorageTests
         Assert.False(File.Exists(plan.Source));
         Assert.Equal(bytes, await File.ReadAllBytesAsync(SafePath.Join(reopened.Game(profile.Id), readable)));
         Assert.Equal(readable, Assert.Single((await new ModInventoryStore(reopened).ReadAsync(profile.Id))!.Files).RelativePath);
+        Assert.Equal(readable, Assert.Single((await AtomicFile.ReadJsonAsync<ModPinSet>(pinFile))!.Pins).File.Path);
+        Console.WriteLine($"Physical rename paths: {plan.Source} → {plan.Target}");
         await renamer.ApplyAsync(await renamer.PreviewAsync(profile.Id, null));
         Assert.Equal(old, Assert.Single((await baseline.ReadAsync(profile.Id))!.Files).RelativePath);
         Assert.True(File.Exists(plan.Source));
         Assert.False(File.Exists(plan.Target));
+    }
+
+    [Fact]
+    public async Task LocalJarNamesPreserveUnverifiedPrefixesAndUseNumberedCollisions()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile(ModLoader.Fabric) with { Name = "T1" };
+        await ws.Store.SaveProfileAsync(profile);
+        var manager = new LocalModManager(ws.Paths, ws.Store);
+        var sources = new[] { "first/Same.jar", "second/Same.jar", new string('a', 64) + "-Chosen.jar" };
+        var cart = new List<ModCartItem>();
+        for (var index = 0; index < sources.Length; index++)
+        {
+            var source = SafePath.Join(ws.Paths.Root, sources[index]);
+            Directory.CreateDirectory(Path.GetDirectoryName(source)!);
+            SecurityAndModsTests.CreateJar(source, "demo" + index);
+            cart.Add(new(source, await manager.InspectAsync(source)));
+        }
+        await manager.InstallAsync(profile, cart, true);
+        var game = ws.Paths.Game(profile.Id);
+        var names = Directory.GetFiles(SafePath.Join(game, "mods")).Select(Path.GetFileName).ToArray();
+        Assert.Contains("Same.jar", names);
+        Assert.Contains("Same-2.jar", names);
+        Assert.Contains(sources[2], names);
+        Assert.All(cart, item => Assert.True(File.Exists(item.SourcePath)));
+        var renamer = new ProfileFileRenamer(ws.Paths, ws.Store, manager, new(ws.Paths));
+        var skipped = Assert.Single(await renamer.ReviewAsync(profile.Id));
+        Assert.Null(skipped.Plan);
+        Assert.Equal("ProfileNameUnverified", skipped.Reason);
+        Console.WriteLine("Physical local collision: " + SafePath.Join(game, "mods/Same-2.jar"));
+    }
+
+    [Fact]
+    public async Task ResourcePackRenamePreservesActiveSelectionAndOtherOptions()
+    {
+        using var ws = new TestWorkspace();
+        await ws.Store.InitializeAsync();
+        var profile = ws.Profile(); await ws.Store.SaveProfileAsync(profile);
+        var game = ws.Paths.Game(profile.Id);
+        var original = SafePath.Join(game, "resourcepacks/source.zip");
+        ProfileContentTests.WriteZip(original, "pack.mcmeta", """{"pack":{"pack_format":34,"description":"Bare Bones"}}""");
+        var digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA512.HashData(await File.ReadAllBytesAsync(original)));
+        var name = digest + "-Bare Bones.zip";
+        File.Move(original, SafePath.Join(game, "resourcepacks/" + name));
+        var options = SafePath.Join(game, "options.txt");
+        await File.WriteAllTextAsync(options, "renderDistance:8\r\nresourcePacks:[\"vanilla\",\"file/" + name + "\"]\r\n" +
+            "incompatibleResourcePacks:[\"file/" + name + "\"]\r\n");
+        var renamer = new ProfileFileRenamer(ws.Paths, ws.Store, new(ws.Paths, ws.Store), new(ws.Paths));
+        var plan = Assert.Single(await renamer.ReviewAsync(profile.Id)).Plan!;
+        await renamer.ApplyAsync(plan);
+        Assert.Equal("resourcepacks/Bare Bones.zip", plan.To);
+        Assert.Equal("renderDistance:8\r\nresourcePacks:[\"vanilla\",\"file/Bare Bones.zip\"]\r\n" +
+            "incompatibleResourcePacks:[\"file/Bare Bones.zip\"]\r\n", await File.ReadAllTextAsync(options));
     }
 
     [Fact]

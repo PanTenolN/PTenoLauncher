@@ -1,9 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using System.Diagnostics;
 using PTenoLauncher.Desktop.ViewModels;
+using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Updates;
 
 namespace PTenoLauncher.Desktop;
@@ -13,19 +16,25 @@ public sealed partial class App : Application
     public Themes.AppearanceManager Appearance { get; private set; } = null!;
     public override void Initialize()
     {
+        var started = Stopwatch.GetTimestamp();
         AvaloniaXamlLoader.Load(this);
         Appearance = new(this); Appearance.Initialize(); Localization.TextCatalog.Apply("uk");
+        Program.WriteStartupSpan("application-resources", started);
     }
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && Program.Services is not null)
         {
+            var started = Stopwatch.GetTimestamp();
             var vm = new MainViewModel(Program.Services);
             var window = new MainWindow { DataContext = vm };
+            Program.WriteStartupSpan("window-construction", started);
             desktop.MainWindow = window;
             window.Opened += async (_, _) =>
             {
+                var initialization = Stopwatch.GetTimestamp();
                 await vm.InitializeAsync();
+                Program.WriteStartupSpan("load-local-data", initialization);
                 if (!vm.IsInitialized) return; // Keep initialization errors visible in the main window.
                 // Unattended package smoke must not wait for user input or save a language choice.
                 if (!Program.Arguments.Contains("--smoke-test") && !await window.EnsureLanguageSelectedAsync())
@@ -77,6 +86,21 @@ public sealed partial class App : Application
                 if (!Program.Arguments.Contains("--smoke-test")) _ = MonitorConnectivityAsync(window, vm);
                 if (Program.Arguments.Contains("--smoke-test"))
                 {
+                    var forgeSmoke = Array.IndexOf(Program.Arguments, "--smoke-forge-lifecycle");
+                    if (forgeSmoke >= 0)
+                    {
+                        try
+                        {
+                            await ExerciseLiveForgeAsync(window, vm, Program.Arguments.ElementAtOrDefault(forgeSmoke + 1));
+                            desktop.Shutdown(0);
+                        }
+                        catch (Exception error)
+                        {
+                            Console.Error.WriteLine(error);
+                            desktop.Shutdown(1);
+                        }
+                        return;
+                    }
                     if (Program.Arguments.Contains("--smoke-fabric"))
                     {
                         vm.SelectedProfile = vm.Profiles.LastOrDefault(p => p.Loader == PTenoLauncher.Core.ModLoader.Fabric);
@@ -116,13 +140,17 @@ public sealed partial class App : Application
                     }
                     var sizeIndex=Array.IndexOf(Program.Arguments,"--smoke-size");
                     if(sizeIndex>=0 && sizeIndex+2<Program.Arguments.Length && int.TryParse(Program.Arguments[sizeIndex+1],out var width) && int.TryParse(Program.Arguments[sizeIndex+2],out var height) && width is >=980 and <=1920 && height is >=680 and <=1200) { window.Width=width;window.Height=height; }
+                    var serverForm = Array.IndexOf(Program.Arguments, "--smoke-server-form");
+                    var serverMarker = serverForm >= 0
+                        ? await ExerciseServerFormAsync(window, vm, Program.Arguments.ElementAtOrDefault(serverForm + 1) ?? "")
+                        : "";
                     Dialogs.ModBaselineDialog? reviewDialog = null;
                     if (Program.Arguments.Contains("--smoke-review-mods") && vm.CanManageMods)
                     {
                         reviewDialog = new(vm); await reviewDialog.RefreshAsync(); reviewDialog.Show(window);
                     }
                     var marker = Path.Combine(Program.Services.Paths.Root, "gui-smoke.txt");
-                    await File.WriteAllTextAsync(marker, $"Window opened; {vm.Profiles.Count} profiles; page={vm.Page}; mods={vm.CanManageMods}; initialized={vm.IsInitialized}; fabric={vm.SelectedFabricVersion?.Version}; quilt={vm.SelectedQuiltVersion?.Version}; operation={vm.LastOperationSucceeded}; optional={vm.OptionalChoices.Count}; {vm.Status}");
+                    await File.WriteAllTextAsync(marker, $"Window opened; {vm.Profiles.Count} profiles; page={vm.Page}; mods={vm.CanManageMods}; initialized={vm.IsInitialized}; fabric={vm.SelectedFabricVersion?.Version}; quilt={vm.SelectedQuiltVersion?.Version}; operation={vm.LastOperationSucceeded}; optional={vm.OptionalChoices.Count}; {vm.Status}{serverMarker}");
                     DispatcherTimer.RunOnce(() => {
                         if (Program.Arguments.Contains("--capture-ui"))
                         {
@@ -135,6 +163,41 @@ public sealed partial class App : Application
             };
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static async Task<string> ExerciseServerFormAsync(MainWindow window, MainViewModel vm, string mode)
+    {
+        if (mode is not ("scratch" or "profile")) throw new ArgumentException("Invalid server form smoke mode.");
+        window.FindControl<Button>("ServersNavButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await WaitAsync(() => vm.IsServers && vm.CanEditServer && !vm.ServerCatalogLoading && vm.HasServerVersions);
+        var core = window.FindControl<ComboBox>("ServerCorePicker")!;
+        core.SelectedItem = vm.ServerCores.Single(option => option.Core == ServerCore.Forge);
+        await WaitAsync(() => !vm.ServerCatalogLoading && vm.NewServerBuild == "52.1.0");
+        var version = window.FindControl<ComboBox>("ServerMinecraftVersionPicker")!;
+        var build = window.FindControl<ComboBox>("ServerCoreBuildPicker")!;
+        if (version.SelectedItem is not PTenoLauncher.Core.VersionEntry { Id: "1.21.1" } || build.SelectedItem is not "52.1.0")
+            throw new InvalidDataException("The Forge server selectors do not display their catalog choices.");
+        window.FindControl<TextBox>("NewServerNameInput")!.Text = "Forge 1.21.1";
+        if (mode == "profile")
+        {
+            window.FindControl<RadioButton>("ServerFromProfileButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.FindControl<ComboBox>("ServerSourceProfilePicker")!.SelectedItem = vm.Profiles.Single();
+        }
+        window.UpdateLayout();
+        var scratch = window.FindControl<RadioButton>("ServerFromScratchButton")!;
+        var profile = window.FindControl<RadioButton>("ServerFromProfileButton")!;
+        if (scratch.Bounds.Height != 40 || profile.Bounds.Height != 40 ||
+            scratch.IsChecked != (mode == "scratch") || profile.IsChecked != (mode == "profile") ||
+            !window.FindControl<Button>("CreateLocalServerButton")!.IsEffectivelyEnabled)
+            throw new InvalidDataException("The server form mode, controls or create button did not initialize.");
+        window.FindControl<Border>("ServerCreationForm")!.BringIntoView();
+        return $"; serverForm={mode}; core=Forge; minecraft=1.21.1; build=52.1.0; create=True";
+
+        static async Task WaitAsync(Func<bool> ready)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            while (!ready()) await Task.Delay(20, timeout.Token);
+        }
     }
 
     private static async Task MonitorConnectivityAsync(MainWindow window, MainViewModel vm)

@@ -9,7 +9,8 @@ namespace PTenoLauncher.Desktop.ViewModels;
 public sealed partial class MainViewModel
 {
     private readonly record struct WorkspaceKey(Guid Profile, ProfileSection Section);
-    private sealed record WorkspaceSnapshot(WorkspaceModRow[] Mods, ProfileContentEntry[] Content, string? Shader = null);
+    private sealed record WorkspaceSnapshot(WorkspaceModRow[] Mods, ProfileContentEntry[] Content, string? Shader = null,
+        bool ShaderPresent = false, bool ShaderScanComplete = true);
     private sealed class WorkspaceCacheEntry
     {
         public WorkspaceSnapshot? Snapshot;
@@ -18,6 +19,7 @@ public sealed partial class MainViewModel
         public Task? Pending;
         public string? Select;
         public ModLoader? Loader;
+        public string? Version;
     }
 
     private static readonly ProfileSection[] FileSections =
@@ -72,10 +74,12 @@ public sealed partial class MainViewModel
     private Task EnsureWorkspaceSnapshotAsync(WorkspaceKey key)
     {
         var entry = CacheFor(key);
-        var loader = (SelectedProfile?.Id == key.Profile ? SelectedProfile : allProfiles.FirstOrDefault(profile => profile.Id == key.Profile))?.Loader ?? ModLoader.Vanilla;
-        if (entry.Loader != loader)
+        var profile = SelectedProfile?.Id == key.Profile ? SelectedProfile : allProfiles.FirstOrDefault(p => p.Id == key.Profile);
+        var loader = profile?.Loader ?? ModLoader.Vanilla;
+        if (entry.Loader != loader || entry.Version != profile?.MinecraftVersion)
         {
             entry.Loader = loader;
+            entry.Version = profile?.MinecraftVersion;
             entry.Revision++;
         }
         if (entry.Pending is { } pending) return pending;
@@ -98,15 +102,24 @@ public sealed partial class MainViewModel
                 else
                 {
                     var kind = ContentKind(key.Section);
-                    var rows = await Task.Run(() => services.Content.ListAsync(key.Profile, kind));
+                    var profile = SelectedProfile?.Id == key.Profile ? SelectedProfile : allProfiles.FirstOrDefault(p => p.Id == key.Profile);
+                    var rows = await Task.Run(() => services.Content.ListAsync(key.Profile, kind, profileInfo: profile));
                     string? shader = null;
+                    var shaderPresent = false;
                     if (kind == ProfileContentKind.Shaders)
                     {
                         var mods = new WorkspaceKey(key.Profile, ProfileSection.Mods);
                         if (loader != ModLoader.Vanilla) await EnsureWorkspaceSnapshotAsync(mods);
-                        shader = CacheFor(mods).Snapshot?.Shader ?? TextCatalog.Get("ContentShaderComponentUnknown");
+                        var scan = CacheFor(mods).Snapshot;
+                        shaderPresent = scan?.ShaderPresent == true;
+                        shader = ProfileContentCompatibility.Shaders(profile) == ContentSupport.Unknown
+                            ? TextCatalog.Get("WorkspaceCompatibilityUnknown") + (shaderPresent ? " · " + scan!.Shader : "")
+                            : shaderPresent ? scan!.Shader
+                            : scan?.ShaderScanComplete == true && ProfileContentCompatibility.ShaderComponent(profile) is { } suggested
+                                ? TextCatalog.Format("ShaderMissingSuggested", suggested)
+                                : TextCatalog.Get("WorkspaceCompatibilityUnknown");
                     }
-                    snapshot = new([], rows.ToArray(), shader);
+                    snapshot = new([], rows.ToArray(), shader, shaderPresent);
                 }
                 if (!workspaceCache.TryGetValue(key, out var current) || current != entry) return;
                 if (revision != entry.Revision) continue;
@@ -144,6 +157,10 @@ public sealed partial class MainViewModel
             foreach (var row in snapshot?.Content ?? []) WorkspaceContentRows.Add(row);
             WorkspaceContentSelection = WorkspaceContentRows.FirstOrDefault(row => row.FileName == selected);
             WorkspaceShaderSupport = snapshot?.Shader ?? "";
+            workspaceHasShaderComponent = snapshot?.ShaderPresent == true;
+            Changed(nameof(WorkspaceFindShaderComponent));
+            Changed(nameof(WorkspacePackStatus));
+            Changed(nameof(WorkspacePackAction));
         }
     }
 
@@ -164,6 +181,13 @@ public sealed partial class MainViewModel
         var shaders = InvalidateWorkspaceAsync(new(profile, ProfileSection.Shaders));
         return Task.WhenAll(mods, shaders);
     }
+
+    internal Task InvalidateRenamedFileAsync(Guid profile, string relative) => relative.Split('/')[0] switch
+    {
+        "mods" => InvalidateWorkspaceModsAsync(profile),
+        "resourcepacks" => InvalidateWorkspaceAsync(new(profile, ProfileSection.ResourcePacks)),
+        _ => InvalidateWorkspaceAsync(new(profile, ProfileSection.Shaders))
+    };
 
     internal void EnableWorkspaceWatching()
     {
@@ -237,6 +261,7 @@ public sealed partial class MainViewModel
                 (parts[1].EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || parts[1].EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase)) => ProfileSection.Mods,
             "resourcepacks" when parts.Length <= 2 || parts.Length == 3 &&
                 parts[2].Equals("pack.mcmeta", StringComparison.OrdinalIgnoreCase) => ProfileSection.ResourcePacks,
+            "options.txt" when parts.Length == 1 => ProfileSection.ResourcePacks,
             "shaderpacks" when parts.Length <= 2 => ProfileSection.Shaders,
             "saves" when !changed && (parts.Length <= 2 || parts.Length == 3 &&
                 parts[2].Equals("level.dat", StringComparison.OrdinalIgnoreCase)) => ProfileSection.Worlds,

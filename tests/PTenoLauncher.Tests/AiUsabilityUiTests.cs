@@ -24,6 +24,7 @@ public sealed class AiUsabilityUiTests
         var w=new MainWindow{DataContext=vm,Width=980,Height=680};w.Show();try
         {
             vm.Page=LauncherPage.Settings;w.FindControl<TabControl>("SettingsTabs")!.SelectedItem=w.FindControl<TabItem>("AiAssistantTab");w.UpdateLayout();
+            Assert.Equal(TextCatalog.Get("AiInDevelopment"), w.FindControl<TextBlock>("AiAssistantDevelopmentLabel")!.Text);
             var send=w.FindControl<Button>("AskAiButton")!;var point=send.TranslatePoint(new Point(0,send.Bounds.Height),w);Assert.NotNull(point);Assert.True(point.Value.Y<630,$"Composer must be visible without scrolling at minimum window size. Bottom={point.Value.Y}, window={w.Bounds}, button={send.Bounds}");
             w.FindControl<TextBox>("AiQuestionInput")!.Text="Question";w.FindControl<CheckBox>("AiRequestConsent")!.IsChecked=true;send.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await entered.Task;
             Assert.True(vm.AiWaiting);Assert.True(w.FindControl<TextBlock>("AiWaitingText")!.IsVisible);w.FindControl<Button>("CancelAiRequest")!.Command!.Execute(null);await Idle(vm);
@@ -40,6 +41,7 @@ public sealed class AiUsabilityUiTests
         var w=new MainWindow{DataContext=vm};w.Show();try
         {
             vm.Page=LauncherPage.Settings;w.FindControl<TabControl>("SettingsTabs")!.SelectedItem=w.FindControl<TabItem>("MyTranslationsTab");await Idle(vm);w.UpdateLayout();
+            Assert.Equal(TextCatalog.Get("AiInDevelopment"), w.FindControl<TextBlock>("TranslationsDevelopmentLabel")!.Text);
             Assert.Equal(1,Assert.Single(vm.TranslationDrafts).Review);Assert.Equal("Keep %s",Assert.Single(vm.TranslationRows).Translation);
             var accept=w.GetVisualDescendants().OfType<CheckBox>().Single(c=>Equals(c.Content,TextCatalog.Get("AiUxAcceptRow")));accept.IsChecked=true;Assert.True(vm.TranslationDirty);
             w.FindControl<Button>("SaveTranslationEdits")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle(vm);Assert.True(vm.LastOperationSucceeded,vm.Status);Assert.Equal(0,Assert.Single(vm.TranslationDrafts).Review);
@@ -115,6 +117,7 @@ public sealed class AiUsabilityUiTests
             {
                 vm.SelectedLanguage=language;TextCatalog.ValidateCatalog(language.Code,TextCatalog.Catalog(language.Code));
                 w.FindControl<TabControl>("SettingsTabs")!.SelectedItem=w.FindControl<TabItem>("AiConnectionTab");w.UpdateLayout();
+                Assert.Equal(TextCatalog.Get("AiInDevelopment"), w.FindControl<TextBlock>("AiConnectionDevelopmentLabel")!.Text);
                 Assert.Equal(TextCatalog.Get("AiUxCheckConnection"),w.FindControl<Button>("CheckAiConnectionButton")!.Content);
                 var input=w.FindControl<TextBox>("AiKeyInput")!;Assert.True(input.Bounds.Width>0);Assert.Equal(width,w.Bounds.Width);Assert.NotNull(w.FindControl<ListBox>("TranslationTable"));Assert.NotNull(w.FindControl<ComboBox>("TranslationProfile"));
                 Assert.True(input.Focus());w.KeyPressQwerty(PhysicalKey.Tab,RawInputModifiers.None);w.KeyReleaseQwerty(PhysicalKey.Tab,RawInputModifiers.None);Assert.NotSame(input,w.FocusManager!.GetFocusedElement());

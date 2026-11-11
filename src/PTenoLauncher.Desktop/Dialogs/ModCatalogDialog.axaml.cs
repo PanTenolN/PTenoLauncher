@@ -25,7 +25,7 @@ public sealed partial class ModCatalogDialog : Window
     private CancellationTokenSource? searchDelay;
     private CatalogIconCache? icons;
     public ModCatalogDialog() => InitializeComponent();
-    public ModCatalogDialog(MainViewModel vm, GameProfile profile, bool review = false) : this()
+    public ModCatalogDialog(MainViewModel vm, GameProfile profile, bool review = false, string? initialQuery = null) : this()
     {
         this.vm = vm;
         this.profile = profile;
@@ -50,7 +50,12 @@ public sealed partial class ModCatalogDialog : Window
             else
             {
                 CatalogQuery.Focus();
-                QueueVersions();
+                if (initialQuery is null) QueueVersions();
+                else
+                {
+                    vm.RemoteQuery = initialQuery;
+                    await QueueSearchAsync(immediate: true);
+                }
             }
         };
     }

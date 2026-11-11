@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PTenoLauncher.Desktop.Dialogs.LocalServerWindow" Width="920" Height="620"
+        MinWidth="640" MinHeight="440" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*" RowSpacing="12" Margin="18">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <StackPanel>
+        <TextBlock Text="{Binding Server.Name}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding State}" Classes="secondary" TextWrapping="Wrap"/>
+      </StackPanel>
+      <WrapPanel Grid.Column="1" ItemSpacing="8">
+        <Button Content="{DynamicResource Text.ServerBackToLauncher}" Click="ReturnToLauncher"/>
+        <Button Content="Minecraft" Click="ShowMinecraft"/>
+      </WrapPanel>
+    </Grid>
+    <Grid Grid.Row="1" ColumnDefinitions="196,*" ColumnSpacing="14">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="7">
+          <Button Content="{DynamicResource Text.WorkspaceOverview}" Click="ShowOverview" HorizontalAlignment="Stretch"/>
+          <Button Content="{DynamicResource Text.Settings}" Click="OpenSettings" IsEnabled="{Binding CanModify}" HorizontalAlignment="Stretch"/>
+          <Button Content="{DynamicResource Text.ServerPlayersTitle}" Click="OpenPlayers" IsEnabled="{Binding CanManagePlayers}" HorizontalAlignment="Stretch"/>
+          <Button Content="{DynamicResource Text.Mods}" Click="ShowMods" IsVisible="{Binding Server.HasMods}" HorizontalAlignment="Stretch"/>
+          <Button Content="{DynamicResource Text.AternosKindPlugin}" Click="ShowPlugins" IsVisible="{Binding Server.HasPlugins}" HorizontalAlignment="Stretch"/>
+          <Button Content="{DynamicResource Text.WorkspaceFolders}" Click="ShowFolders" HorizontalAlignment="Stretch"/>
+          <Border Classes="card" Padding="10" Margin="0,4,0,0">
+            <Panel>
+              <StackPanel Name="Overview" Spacing="8">
+                <TextBlock Text="{Binding Server.Version, StringFormat='Minecraft {0}'}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding CoreLabel}" TextWrapping="Wrap"/>
+                <SelectableTextBlock Text="{Binding Server.Address}" TextWrapping="Wrap"/>
+                <Button Content="{DynamicResource Text.ServerCopyAddress}" Click="CopyAddress"/>
+                <Button Content="{DynamicResource Text.ServerStart}" Click="Start" IsEnabled="{Binding CanModify}" Classes="primary"/>
+                <Button Content="{DynamicResource Text.ServerStop}" Click="Stop" IsEnabled="{Binding CanSend}"/>
+                <Button Content="{DynamicResource Text.Cancel}" Click="CancelPreparation" IsVisible="{Binding IsPreparing}"/>
+                <Button Content="{DynamicResource Text.ServerDelete}" Click="Delete" IsEnabled="{Binding CanModify}" Classes="danger"/>
+              </StackPanel>
+              <StackPanel Name="ModsPanel" IsVisible="False" Spacing="8">
+                <Button Click="OpenModsFolder"><TextBlock Text="{DynamicResource Text.ServerModsFolder}" TextWrapping="Wrap"/></Button>
+                <StackPanel IsVisible="{Binding Server.CanInstallMods}" IsEnabled="{Binding CanModify}" Spacing="6">
+                  <Button Click="AddLocalMod"><TextBlock Text="{DynamicResource Text.ServerAddLocalMod}" TextWrapping="Wrap"/></Button>
+                  <Button Click="AddModrinthMod"><TextBlock Text="{DynamicResource Text.ServerAddModrinthMod}" TextWrapping="Wrap"/></Button>
+                </StackPanel>
+              </StackPanel>
+              <StackPanel Name="PluginsPanel" IsVisible="False" Spacing="8">
+                <Button Click="OpenPluginsFolder"><TextBlock Text="{DynamicResource Text.ServerPluginsFolder}" TextWrapping="Wrap"/></Button>
+                <Button Click="AddPlugin" IsEnabled="{Binding CanModify}"><TextBlock Text="{DynamicResource Text.ServerAddPlugin}" TextWrapping="Wrap"/></Button>
+              </StackPanel>
+              <StackPanel Name="FoldersPanel" IsVisible="False" Spacing="8">
+                <Button Click="OpenServerFolder"><TextBlock Text="{DynamicResource Text.ServerOpenFolder}" TextWrapping="Wrap"/></Button>
+              </StackPanel>
+            </Panel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="{DynamicResource Text.Console}" FontWeight="SemiBold"/>
+        <TextBox Grid.Row="1" Text="{Binding Console, Mode=OneWay}" TextChanged="FollowConsole"
+                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas"/>
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8" IsEnabled="{Binding CanSend}">
+          <TextBox Name="ServerCommandInput" Text="{Binding Command}" MaxLength="500" AcceptsReturn="True" Height="38"
+                   PlaceholderText="{DynamicResource Text.ServerCommand}"/>
+          <Button Name="ServerSendButton" Grid.Column="1" Content="{DynamicResource Text.ServerSend}" Click="Send"/>
+        </Grid>
+        <TextBlock Grid.Row="3" Text="{Binding Status}" TextWrapping="Wrap"/>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

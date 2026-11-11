@@ -10,11 +10,15 @@ public sealed class BackupAndRulesTests
     [Fact] public async Task BackupVerifiesAndRestoresIntoNewProfileWithoutChangingOriginal()
     {
         using var ws = new TestWorkspace(); await ws.Store.InitializeAsync();
-        var profile = ws.Profile(); await ws.Store.SaveProfileAsync(profile);
+        var profile = ws.Profile() with { Name = "T1" }; await ws.Store.SaveProfileAsync(profile);
         var world = Path.Combine(ws.Paths.Game(profile.Id), "saves", "precious.dat");
         await File.WriteAllTextAsync(world, "my world");
         var manager = new BackupManager(ws.Paths, ws.Store);
-        var backup = await manager.CreateAsync(profile); await manager.VerifyAsync(backup);
+        var backup = await manager.CreateAsync(profile, label: "резервна копія"); await manager.VerifyAsync(backup);
+        var secondBackup = await manager.CreateAsync(profile, label: "резервна копія");
+        Assert.Matches(@"^T1 — резервна копія — \d{4}-\d{2}-\d{2}\.zip$", Path.GetFileName(backup));
+        Assert.Equal(Path.GetFileNameWithoutExtension(backup) + "-2.zip", Path.GetFileName(secondBackup));
+        Console.WriteLine("Physical backup path: " + backup);
         await File.WriteAllTextAsync(world, "newer state");
         var restored = await manager.RestoreAsNewAsync(backup);
         Assert.NotEqual(profile.Id, restored.Id);

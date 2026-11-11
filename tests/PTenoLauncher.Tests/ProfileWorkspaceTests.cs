@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
@@ -11,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using PTenoLauncher.Core;
 using PTenoLauncher.Desktop;
 using PTenoLauncher.Desktop.Dialogs;
+using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Desktop.ViewModels;
 using PTenoLauncher.Infrastructure.Diagnostics;
 using Xunit;
@@ -19,6 +21,94 @@ namespace PTenoLauncher.Tests;
 
 public sealed class ProfileWorkspaceTests
 {
+    [AvaloniaTheory]
+    [InlineData(980, true)]
+    [InlineData(2400, false)]
+    public async Task ProfileToolbarReflowsAsTwoAlignedGroupsAndAllLoadersKeepsSearch(double width, bool wrapped)
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await services.Store.InitializeAsync();
+        var fabric = ws.Profile(ModLoader.Fabric) with { Name = "Match Fabric" };
+        var vanilla = ws.Profile() with { Name = "Match Vanilla" };
+        var unrelated = ws.Profile(ModLoader.Fabric) with { Name = "Unrelated" };
+        foreach (var profile in new[] { fabric, vanilla, unrelated })
+            await services.Store.SaveProfileAsync(profile);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        vm.Page = LauncherPage.Profiles;
+        var previousLanguage = TextCatalog.Language;
+        var window = new MainWindow { DataContext = vm, Width = width, Height = 720 };
+        window.Show();
+        try
+        {
+            var toolbar = window.FindControl<ProfileToolbarPanel>("ProfileLibraryToolbar")!;
+            var actions = window.FindControl<Grid>("ProfileLibraryActions")!;
+            var options = window.FindControl<Grid>("ProfileDisplayOptions")!;
+            var create = window.FindControl<Button>("ProfileLibraryCreate")!;
+            var search = window.FindControl<TextBox>("ProfileLibrarySearch")!;
+            var filter = window.FindControl<ComboBox>("ProfileLibraryLoaderFilter")!;
+            var library = window.FindControl<ListBox>("ProfileLibrary")!;
+            Assert.Contains("primary", create.Classes);
+            Assert.Equal(0, filter.SelectedIndex);
+            Assert.True(Assert.IsType<LibraryLoaderOption>(filter.SelectedItem).IsAll);
+            TextCatalog.Apply("uk");
+            window.UpdateLayout();
+            Assert.Contains(filter.GetVisualDescendants().OfType<TextBlock>(), text =>
+                text.IsVisible && text.Text == "Усі завантажувачі");
+
+            search.Text = "Match";
+            filter.SelectedItem = vm.LibraryLoaders.Single(item => item.Loader == ModLoader.Fabric);
+            Assert.Equal(fabric.Id, Assert.Single(library.Items.Cast<GameProfile>()).Id);
+            filter.SelectedIndex = 0;
+            Assert.Equal("Match", search.Text);
+            Assert.Equal(new[] { fabric.Id, vanilla.Id }, library.Items.Cast<GameProfile>().Select(p => p.Id));
+
+            foreach (var language in TextCatalog.Languages)
+            {
+                TextCatalog.Apply(language.Code);
+                AssertLayout();
+            }
+
+            void AssertLayout()
+            {
+                window.UpdateLayout();
+                Assert.InRange(window.ClientSize.Width, width - 1, width + 1);
+                var firstRowTop = Top(create);
+                Assert.Equal(firstRowTop, Top(search), 1);
+                Assert.Equal(firstRowTop, Top(filter), 1);
+                Assert.Equal(create.Bounds.Height, search.Bounds.Height, 1);
+                Assert.Equal(create.Bounds.Height, filter.Bounds.Height, 1);
+                Assert.True(create.Bounds.Height > 0);
+                Assert.All(actions.Children, item =>
+                    Assert.True(item.Bounds.Right <= actions.Bounds.Width + 0.5,
+                        $"{TextCatalog.Language} at {width} DIP clips {item.Name} in the action row."));
+                Assert.Equal(3, options.Children.Count);
+                var optionsTop = Top(options.Children[0]);
+                Assert.All(options.Children, item =>
+                {
+                    var label = Assert.IsType<TextBlock>(Assert.IsType<CheckBox>(item).Content);
+                    Assert.Equal(optionsTop, Top(item), 1);
+                    Assert.True(item.Bounds.Right <= options.Bounds.Width + 0.5,
+                        $"{TextCatalog.Language} at {width} DIP clips {label.Text} in the display options.");
+                    Assert.InRange(label.Bounds.Height, label.DesiredSize.Height - 0.5, item.Bounds.Height);
+                });
+                Assert.InRange(actions.Bounds.Right, 1, toolbar.Bounds.Width + 0.5);
+                Assert.InRange(options.Bounds.Right, 1, toolbar.Bounds.Width + 0.5);
+                Assert.True(wrapped ? optionsTop >= firstRowTop + create.Bounds.Height : Math.Abs(optionsTop - firstRowTop) < 0.5,
+                    $"{TextCatalog.Language} at {width} DIP has action Y={firstRowTop}, option Y={optionsTop}, " +
+                    $"toolbar width={toolbar.Bounds.Width}, action width={actions.Bounds.Width}, option width={options.Bounds.Width}.");
+            }
+
+            double Top(Control control) => control.TranslatePoint(default, toolbar)!.Value.Y;
+        }
+        finally
+        {
+            window.Close();
+            TextCatalog.Apply(previousLanguage);
+        }
+    }
+
     [AvaloniaFact]
     public async Task PartialAndMisspelledKotlinQueriesKeepTheProfileFiltersAndRankTheExactMod()
     {

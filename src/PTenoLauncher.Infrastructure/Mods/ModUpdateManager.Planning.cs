@@ -70,9 +70,22 @@ public sealed partial class ModUpdateManager
             if (old is not null && !inventory.Files.Any(f => f.RelativePath == old.Path)) { blockers.Add("UpdatesIntegrity: " + old.Path); continue; }
             if (old is not null && deleted.Contains(old.Path)) { blockers.Add("UpdatesCompatibility: " + v.ProjectId); continue; }
             await downloads.DownloadAsync(v.File.Url, CacheFile(v), v.File.Sha512, v.File.Size, "SHA512", ct: ct, source: DownloadSource.Modrinth);
-            var relative = old?.Path ?? LocalModManager.ChooseInstallPath(paths.Game(p.Id), v.File.Name, v.File.Sha512, reservedNames);
-            var file = await FileState(CacheFile(v), relative, ct); result.Add(file);
-            changes.Add(new(old is null ? "DependencyAdd" : selected.ContainsKey(v.ProjectId) ? "Update" : "DependencyReplace", old, file, v));
+            var payload = await FileState(CacheFile(v), "mods/" + v.File.Name, ct);
+            var technical = old is not null && ReadableName.StripDigest(Path.GetFileNameWithoutExtension(old.Path), old.Sha256, old.Sha512) is not null;
+            var followsProvider = old is not null && known.TryGetValue(old.Path, out var previousVersion) &&
+                old.Path == "mods/" + previousVersion.File.Name && previousVersion.File.Name != v.File.Name;
+            var relative = old is not null && !technical && !followsProvider ? old.Path :
+                LocalModManager.ChooseInstallPath(paths.Game(p.Id), v.File.Name, payload.Sha256, reservedNames,
+                    v.ProjectId + "-" + v.Number, payload.Sha512);
+            var file = payload with { Path = relative };
+            result.Add(file);
+            var kind = old is null ? "DependencyAdd" : selected.ContainsKey(v.ProjectId) ? "Update" : "DependencyReplace";
+            if (old is not null && old.Path != relative)
+            {
+                changes.Add(new(kind, old, null, null));
+                old = null;
+            }
+            changes.Add(new(kind, old, file, v));
         }
         if (result.Select(f => f.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Count) blockers.Add("UpdatesIntegrity");
         // All untracked and unselected bytes are retained; dependency orphans are never automatically removed.

@@ -22,7 +22,7 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
         if (!report.Ready) throw new InvalidOperationException(report.Summary);
         var receipt = (await AtomicFile.ReadJsonAsync<InstallationReceipt>(paths.Receipt(profile.Id), ct))!;
         var (session, launchOffline) = await SelectSessionAsync(network, token => auth.SignInAsync(false, token), auth.GetCachedSession, checkConnectivity, ct);
-        var nativeDir = SafePath.Join(paths.Profile(profile.Id), "natives-" + Guid.NewGuid().ToString("N"));
+        var nativeDir = NativeDirectory(paths, profile.Id, Guid.NewGuid());
         Directory.CreateDirectory(nativeDir);
         try
         {
@@ -37,28 +37,10 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
                 }
                 finally { Directory.Delete(staging, true); }
             }
-            var values = new Dictionary<string, string>
-            {
-                ["auth_player_name"] = session.Account.Name, ["version_name"] = receipt.Forge?.VersionId ?? receipt.Version,
-                ["game_directory"] = paths.Game(profile.Id), ["assets_root"] = SafePath.Join(paths.Cache, "assets"),
-                ["assets_index_name"] = receipt.AssetIndex, ["auth_uuid"] = session.Account.Uuid,
-                ["auth_access_token"] = launchOffline ? "0" : session.AccessToken,
-                ["user_type"] = "msa", ["version_type"] = receipt.VersionType, ["natives_directory"] = nativeDir,
-                ["launcher_name"] = "PTenoLauncher", ["launcher_version"] = Updates.LauncherBuild.Current.Version,
-                ["classpath"] = string.Join(Path.PathSeparator, receipt.Classpath.Select(f => SafePath.Join(paths.Cache, f))),
-                ["classpath_separator"] = Path.PathSeparator.ToString(), ["library_directory"] = paths.Cache,
-                ["user_properties"] = "{}", ["clientid"] = "", ["auth_xuid"] = "",
-                ["auth_session"] = launchOffline ? "0" : "token:" + session.AccessToken + ":" + session.Account.Uuid,
-                ["game_assets"] = AssetManager.GameAssets(paths, profile.Id, receipt)
-            };
-            string Expand(string argument) => LaunchArgumentExpansion.Expand(argument, values);
-            var psi = new ProcessStartInfo(profile.JavaPath!) { WorkingDirectory = paths.Game(profile.Id), UseShellExecute = false, CreateNoWindow = true };
-            psi.ArgumentList.Add("-Xms512M"); psi.ArgumentList.Add($"-Xmx{profile.MemoryMb}M");
-            foreach (var arg in receipt.JvmArguments) psi.ArgumentList.Add(Expand(arg));
-            psi.ArgumentList.Add(receipt.MainClass);
-            foreach (var arg in receipt.GameArguments) psi.ArgumentList.Add(Expand(arg));
+            var psi = CreateStartInfo(paths, profile, receipt, nativeDir, session, launchOffline);
             var activeFile = SafePath.Join(paths.Profile(profile.Id), "active-game.json");
-            var gameLog = SafePath.Join(paths.Profile(profile.Id), $"launcher-logs/game-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.log");
+            var gameLog = ReadableName.Free(SafePath.Join(paths.Profile(profile.Id), "launcher-logs"),
+                ReadableName.Stem(profile.Name, "Minecraft", 64) + $" — {DateTime.UtcNow:yyyy-MM-dd HH-mm-ss}", ".log");
             using var working = onWorkingLaunch is null ? null : await TryCaptureWorkingLaunch(profile, receipt, ct);
             int code;
             try
@@ -84,6 +66,54 @@ public sealed class GameLauncher(LauncherPaths paths, OfflineReadiness readiness
             return code;
         }
         finally { if (Directory.Exists(nativeDir)) Directory.Delete(nativeDir, true); }
+    }
+
+    internal static string NativeDirectory(LauncherPaths paths, Guid profileId, Guid launchId)
+    {
+        var root = paths.Profile(profileId);
+        if (OperatingSystem.IsWindows() && !root.All(char.IsAscii))
+        {
+            // Some native loaders still need an ASCII path even after Java resolves it.
+            root = paths.Cache;
+            if (!root.All(char.IsAscii))
+            {
+                var temp = Path.GetTempPath();
+                if (temp.All(char.IsAscii)) return SafePath.Join(temp, $"PTenoLauncher-natives-{launchId:N}");
+            }
+        }
+        return SafePath.Join(root, $"natives-{launchId:N}");
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(LauncherPaths paths, GameProfile profile, InstallationReceipt receipt,
+        string nativeDir, MinecraftSession session, bool launchOffline)
+    {
+        var gameDirectory = paths.Game(profile.Id);
+        // The Windows Java launcher can lose characters while reading the command line. The working
+        // directory is passed separately and keeps its Unicode name.
+        string JavaPath(string path) => OperatingSystem.IsWindows() && !path.All(char.IsAscii)
+            ? Path.GetRelativePath(gameDirectory, path) : path;
+
+        var values = new Dictionary<string, string>
+        {
+            ["auth_player_name"] = session.Account.Name, ["version_name"] = receipt.Forge?.VersionId ?? receipt.Version,
+            ["game_directory"] = JavaPath(gameDirectory), ["assets_root"] = JavaPath(SafePath.Join(paths.Cache, "assets")),
+            ["assets_index_name"] = receipt.AssetIndex, ["auth_uuid"] = session.Account.Uuid,
+            ["auth_access_token"] = launchOffline ? "0" : session.AccessToken,
+            ["user_type"] = "msa", ["version_type"] = receipt.VersionType, ["natives_directory"] = JavaPath(nativeDir),
+            ["launcher_name"] = "PTenoLauncher", ["launcher_version"] = Updates.LauncherBuild.Current.Version,
+            ["classpath"] = string.Join(Path.PathSeparator, receipt.Classpath.Select(f => JavaPath(SafePath.Join(paths.Cache, f)))),
+            ["classpath_separator"] = Path.PathSeparator.ToString(), ["library_directory"] = JavaPath(paths.Cache),
+            ["user_properties"] = "{}", ["clientid"] = "", ["auth_xuid"] = "",
+            ["auth_session"] = launchOffline ? "0" : "token:" + session.AccessToken + ":" + session.Account.Uuid,
+            ["game_assets"] = JavaPath(AssetManager.GameAssets(paths, profile.Id, receipt))
+        };
+        var start = new ProcessStartInfo(profile.JavaPath!) { WorkingDirectory = gameDirectory, UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add("-Xms512M");
+        start.ArgumentList.Add($"-Xmx{profile.MemoryMb}M");
+        foreach (var arg in receipt.JvmArguments) start.ArgumentList.Add(LaunchArgumentExpansion.Expand(arg, values));
+        start.ArgumentList.Add(receipt.MainClass);
+        foreach (var arg in receipt.GameArguments) start.ArgumentList.Add(LaunchArgumentExpansion.Expand(arg, values));
+        return start;
     }
 
     private async Task<WorkingLaunchCapture?> TryCaptureWorkingLaunch(GameProfile profile, InstallationReceipt receipt, CancellationToken ct)

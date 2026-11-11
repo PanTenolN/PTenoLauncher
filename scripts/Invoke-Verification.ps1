@@ -6,6 +6,15 @@ param(
     [switch]$Smoke,
     [switch]$KeepManual,
     [switch]$Package,
+    [switch]$VerifyJeiNames,
+    [switch]$VerifyLocalServers,
+    [switch]$VerifyVanillaCommands,
+    [switch]$VerifyForgeServer,
+    [switch]$VerifyForgeClient,
+    [switch]$VerifyServerForm,
+    [switch]$VerifyStartup,
+    [switch]$VerifySetup,
+    [switch]$VerifyForgeInExe,
     [ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ReplaceManualSha256,
     [switch]$CachedPackages,
     [ValidateRange(1,7200)][int]$PhaseTimeoutSeconds = 1800
@@ -24,6 +33,11 @@ if ($Mode -eq 'inventory') {
 if ($FocusedClass -and $Mode -notin 'all','focused') { throw 'FocusedClass requires the all or focused mode.' }
 if ($Mode -eq 'focused' -and !$FocusedClass) { throw 'The focused mode requires FocusedClass.' }
 if ($Package -and $Mode -ne 'all') { throw 'Packaging requires a full verification run.' }
+if ($VerifyJeiNames -and $Mode -ne 'all') { throw 'Live Modrinth verification requires the all mode.' }
+if (($VerifyLocalServers -or $VerifyVanillaCommands -or $VerifyForgeServer) -and $Mode -ne 'all') { throw 'Live server verification requires the all mode.' }
+if ($VerifyForgeClient -and $Mode -ne 'all') { throw 'Live Forge client verification requires the all mode.' }
+if ($VerifyServerForm -and !$Package) { throw 'Native server form verification requires -Package.' }
+if (($VerifySetup -or $VerifyForgeInExe) -and !$Package) { throw 'Setup and native Forge verification require -Package.' }
 if ($ReplaceManualSha256 -and (!$KeepManual -or $Mode -ne 'all')) {
     throw 'Replacing the retained launcher requires the full run and -KeepManual.'
 }
@@ -97,6 +111,7 @@ function Invoke-Tests([string]$Name, [string[]]$Classes) {
     if ((Get-FileHash -LiteralPath $testBinary).Hash -ne $scope.TestBinarySha256) { throw 'The tested binary changed during verification' }
 }
 
+$packageGateFailures = [Collections.Generic.List[string]]::new()
 function Test-PreviewPackage {
     $packageArgs = @('-NoProfile','-File',(Join-Path $projectRoot 'scripts/build.ps1'),'-Publish','-Installer',
         '-VerificationOperation',$operation,'-ReleaseSequence','1','-BuildId',$id)
@@ -119,6 +134,72 @@ function Test-PreviewPackage {
     $marker = Get-Content -LiteralPath (Join-Path $installedData 'gui-smoke.txt') -Raw
     if ($marker -notmatch 'Window opened' -or $marker -notmatch 'initialized=True') { throw 'Self-contained launcher did not initialize.' }
     Set-Content -LiteralPath (Join-Path $evidence 'exe-startup.txt') -Value $marker
+    if ($VerifySetup) {
+        $setups = @(Get-ChildItem -LiteralPath $packageDirectory -File -Filter 'PTenoLauncher-Setup-*-win-x64.exe')
+        if ($setups.Count -ne 1) { throw 'Expected one Setup package.' }
+        $setupRoot = Join-Path $temp 'setup-smoke'
+        try {
+            Invoke-VerificationPhase 'setup-smoke' @('scripts/test-installer.py','--setup',$setups[0].FullName,
+                '--smoke-root',$setupRoot,'--app-sha256',$scope.ManualAppBinarySha256) $python
+        } catch {
+            if ($_.Exception -is [OperationCanceledException]) { throw }
+            $packageGateFailures.Add($_.Exception.Message)
+        } finally {
+            foreach ($file in @('setup-result.json','setup.log','setup.stdout.log','installed-gui.stdout.log','uninstall.log','uninstall.stdout.log')) {
+                $path = Join-Path $setupRoot $file
+                if (Test-Path -LiteralPath $path -PathType Leaf) { Copy-Item -LiteralPath $path -Destination $evidence }
+            }
+        }
+    }
+    if ($Smoke) {
+        foreach ($width in 980,1360) {
+            $profileData = Join-Path $temp "profiles-$width"
+            Invoke-VerificationPhase "profiles-$width" @('--data-root',$profileData,'--smoke-test','--skip-update-check',
+                '--smoke-page','Profiles','--smoke-size',"$width",'720','--capture-ui') $exe
+            $profileMarker = Get-Content -LiteralPath (Join-Path $profileData 'gui-smoke.txt') -Raw
+            if ($profileMarker -notmatch 'page=Profiles' -or $profileMarker -notmatch 'initialized=True') {
+                throw "Profiles did not initialize at width $width."
+            }
+            Copy-Item -LiteralPath (Join-Path $profileData 'window-preview.png') -Destination (Join-Path $evidence "profiles-$width.png")
+        }
+    }
+    if ($VerifyServerForm) {
+        foreach ($width in 980,1360) {
+            foreach ($form in 'scratch','profile') {
+                $phase = "server-form-$width-$form"
+                $formData = Join-Path $temp $phase
+                Invoke-VerificationPhase "$phase-fixture" @($smokeBinary,$formData,'--server-form-fixture')
+                Invoke-VerificationPhase $phase @('--data-root',$formData,'--smoke-test','--skip-update-check',
+                    '--smoke-server-form',$form,'--smoke-size',"$width",'720','--capture-ui') $exe
+                $formMarker = Get-Content -LiteralPath (Join-Path $formData 'gui-smoke.txt') -Raw
+                if ($formMarker -notmatch 'page=Servers' -or $formMarker -notmatch "serverForm=$form; core=Forge; minecraft=1.21.1; build=52.1.0; create=True") {
+                    throw "Servers form did not initialize at $width in $form mode."
+                }
+                Set-Content -LiteralPath (Join-Path $evidence "$phase.txt") -Value $formMarker
+                Copy-Item -LiteralPath (Join-Path $formData 'window-preview.png') -Destination (Join-Path $evidence "$phase.png")
+            }
+        }
+    }
+    if ($VerifyForgeInExe) {
+        $forgeData = Join-Path $temp 'forge-exe'
+        try {
+            $checkpoints = [ordered]@{
+                create = 'PASS: Forge stopped and saved its world.'
+                reopen = 'PASS: Forge card, settings and world persisted after reopening the EXE.'
+            }
+            foreach ($phase in $checkpoints.Keys) {
+                Invoke-VerificationPhase "forge-exe-$phase" @('--data-root',$forgeData,'--smoke-test',
+                    '--skip-update-check','--smoke-forge-lifecycle',$phase) $exe
+                $output = Get-Content -LiteralPath (Join-Path $evidence "forge-exe-$phase.log") -Raw
+                if (!$output -or !$output.Contains($checkpoints[$phase], [StringComparison]::Ordinal)) {
+                    throw "Forge EXE phase $phase did not reach its lifecycle checkpoint. See $evidence/forge-exe-$phase.stderr.log."
+                }
+            }
+        } catch {
+            if ($_.Exception -is [OperationCanceledException]) { throw }
+            $packageGateFailures.Add($_.Exception.Message)
+        }
+    }
     Copy-Item -LiteralPath (Join-Path $packageDirectory 'SHA256SUMS.txt'),(Join-Path $packageDirectory 'final-artifact-verification.json') -Destination $evidence
     Write-VerificationJson (Join-Path $evidence 'scope.json') $scope
 }
@@ -274,14 +355,61 @@ try {
         }
         Write-VerificationJson (Join-Path $evidence 'scope.json') $scope
         if ((Get-SourceFingerprint) -ne $source) { throw 'Source changed during build. Start a new verification operation.' }
+        if ($VerifyStartup) {
+            $retainedExe = Join-Path $evidenceBase 'manual/PTenoLauncher.exe'
+            $candidateExe = Join-Path $operation 'bin/PTenoLauncher.Desktop/release/PTenoLauncher.exe'
+            Invoke-VerificationPhase 'startup-retained' @($smokeBinary,'--startup-probe',$retainedExe,(Join-Path $temp 'startup-retained'))
+            Invoke-VerificationPhase 'startup-candidate' @($smokeBinary,'--startup-probe',$candidateExe,(Join-Path $temp 'startup-candidate'))
+        }
         switch ($Mode) {
             all {
                 if ($FocusedClass) {
                     Invoke-Tests 'focused' $FocusedClass
                     if ((Get-SourceFingerprint) -ne $source) { throw 'Source changed after focused tests. Start a new operation.' }
                 }
+                if ($VerifyJeiNames) {
+                    $live = Join-Path $temp 'modrinth-naming'
+                    Invoke-VerificationPhase 'modrinth-live' @($smokeBinary,$live,'--modrinth','jei','1.21.1','f27XokoP')
+                    $gameMods = Join-Path $live 'instances/T1/game/mods'
+                    Assert-VerificationPath $gameMods
+                    $shell = New-Object -ComObject Shell.Application
+                    $namespace = $shell.NameSpace($gameMods)
+                    $expected = $namespace.ParseName('jei-1.21.1-fabric-19.64.0.455.jar')
+                    if (!$expected -or $expected.Path -cne (Join-Path $gameMods 'jei-1.21.1-fabric-19.64.0.455.jar')) {
+                        throw 'Windows Explorer could not resolve the expected JEI file in game/mods.'
+                    }
+                    $installed = @(foreach ($file in (Get-ChildItem -LiteralPath $gameMods -Filter '*.jar' -File)) {
+                        $item = $namespace.ParseName($file.Name)
+                        if (!$item -or $item.Path -cne $file.FullName) { throw "Explorer path mismatch: $($file.FullName)" }
+                        [pscustomobject]@{ ExplorerName = $item.Name; PhysicalPath = $item.Path }
+                    })
+                    if ($installed.Count -lt 2) { throw 'JEI and its required dependency were not both installed.' }
+                    Write-VerificationJson (Join-Path $evidence 'explorer-modrinth-names.json') $installed
+                }
+                if ($VerifyVanillaCommands) {
+                    Invoke-VerificationPhase 'vanilla-commands-live' @($smokeBinary,(Join-Path $temp 'local-servers'),'--vanilla-commands')
+                }
+                $forgeFailures = @()
+                if ($VerifyForgeServer) {
+                    try { Invoke-VerificationPhase 'forge-server-live' @($smokeBinary,(Join-Path $temp 'forge-servers'),'--forge-server') }
+                    catch { if ($_.Exception -is [OperationCanceledException]) { throw }; $forgeFailures += $_.Exception.Message }
+                }
+                if ($VerifyForgeClient) {
+                    foreach ($pair in @(@{ Game = '1.21.1'; Loader = '52.1.0' }, @{ Game = '1.21.4'; Loader = '54.1.0' })) {
+                        $version = "$($pair.Game)-$($pair.Loader)"
+                        $phase = "forge-client-$version-live"
+                        try { Invoke-VerificationPhase $phase @($smokeBinary,(Join-Path $temp $phase),'--forge-install','Forge',$version,$pair.Game) }
+                        catch { if ($_.Exception -is [OperationCanceledException]) { throw }; $forgeFailures += $_.Exception.Message }
+                    }
+                }
+                if ($forgeFailures.Count) { throw ($forgeFailures -join [Environment]::NewLine) }
                 if ($Package) { Test-PreviewPackage }
-                Invoke-Tests 'full' @()
+                try { Invoke-Tests 'full' @() }
+                catch {
+                    if ($_.Exception -is [OperationCanceledException] -or !$packageGateFailures.Count) { throw }
+                    $packageGateFailures.Add($_.Exception.Message)
+                }
+                if ($packageGateFailures.Count) { throw ($packageGateFailures -join [Environment]::NewLine) }
             }
             ai { Invoke-Tests 'focused' @('*Ai*','*Translation*','*TestData*') }
             imports { Invoke-Tests 'focused' @('*InstancePack*','*MinecraftLauncher*','*ZipPack*','*Mrpack*') }
@@ -292,6 +420,9 @@ try {
         }
         if (($Smoke -or $KeepManual) -and $Mode -ne 'instance-native') {
             Invoke-VerificationPhase 'native-instance' @($smokeBinary,'--instance-native')
+        }
+        if ($VerifyLocalServers) {
+            Invoke-VerificationPhase 'local-servers-live' @($smokeBinary,(Join-Path $temp 'local-servers'),'--local-servers')
         }
         if ((Get-SourceFingerprint) -ne $source -or (Get-FileHash -LiteralPath $appBinary).Hash -ne $scope.AppBinarySha256) {
             throw 'Source or launcher binary changed during verification'

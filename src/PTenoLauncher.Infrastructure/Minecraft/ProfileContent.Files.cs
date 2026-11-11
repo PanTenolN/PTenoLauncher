@@ -15,11 +15,20 @@ public sealed partial class ProfileContent
     }
 
     public ContentFileAction PlanRemove(Guid profile, ProfileContentKind kind, ProfileContentEntry entry)
+        => PlanRemove(profile, kind, entry, paths.Backups);
+
+    public async Task<ContentFileAction> PlanRemoveAsync(Guid profile, ProfileContentKind kind, ProfileContentEntry entry,
+        CancellationToken ct = default)
+        => PlanRemove(profile, kind, entry, kind == ProfileContentKind.Worlds && backupManager is not null
+            ? await backupManager.GetDirectoryAsync(ct) : paths.Backups);
+
+    private ContentFileAction PlanRemove(Guid profile, ProfileContentKind kind, ProfileContentEntry entry, string backupDirectory)
     {
         var stamp = Guid.NewGuid().ToString("N")[..12];
         var target = SafePath.Join(paths.Root, $"trash/content/{profile:N}/{stamp}/{entry.FileName}");
         var backup = kind == ProfileContentKind.Worlds
-            ? SafePath.Join(paths.Backups, $"worlds/{profile:N}/{stamp}/{entry.FileName}") : null;
+            ? SafePath.Join(ReadableName.Free(SafePath.Join(backupDirectory, "worlds"),
+                ReadableName.Stem(entry.FileName, "World", 100) + $" — {DateTime.UtcNow:yyyy-MM-dd}"), entry.FileName) : null;
         return Plan(profile, kind, entry, target, backup);
     }
 
@@ -42,8 +51,11 @@ public sealed partial class ProfileContent
 
     public async Task RemoveAsync(ContentFileAction plan, bool backup, CancellationToken ct = default)
     {
+        var backupDirectory = backup && backupManager is not null ? await backupManager.GetDirectoryAsync(ct) : paths.Backups;
         if (!IsWithin(SafePath.Join(paths.Root, $"trash/content/{plan.Profile:N}"), plan.Target) ||
-            backup && (plan.Backup is null || !IsWithin(SafePath.Join(paths.Backups, $"worlds/{plan.Profile:N}"), plan.Backup)))
+            backup && (plan.Backup is null || plan.Kind != ProfileContentKind.Worlds ||
+                Path.GetFileName(plan.Backup) != plan.Entry.FileName || Path.GetDirectoryName(plan.Backup) is not { } container ||
+                !string.Equals(Path.GetDirectoryName(container), SafePath.Join(backupDirectory, "worlds"), StringComparison.OrdinalIgnoreCase)))
             throw new IOException("ContentCopyDestination");
         using var lease = ValidateAction(plan);
         if (backup) await CopyItemAsync(plan.Entry, plan.Source, plan.Backup!, ct);
@@ -69,7 +81,7 @@ public sealed partial class ProfileContent
         catch { lease.Dispose(); throw; }
     }
 
-    private static async Task CopyItemAsync(ProfileContentEntry item, string source, string target, CancellationToken ct)
+    internal static async Task CopyItemAsync(ProfileContentEntry item, string source, string target, CancellationToken ct)
     {
         EnsureFree(target);
         var parent = Path.GetDirectoryName(target)!;
@@ -135,13 +147,13 @@ public sealed partial class ProfileContent
         if (!(entry.Directory ? Directory.Exists(path) : File.Exists(path))) throw new IOException("ContentMissing");
     }
 
-    private static void EnsureFree(string path)
+    internal static void EnsureFree(string path)
     {
         SafePath.RejectLinks(path);
         if (File.Exists(path) || Directory.Exists(path)) throw new IOException("ContentCollision");
     }
 
-    private static bool IsWithin(string parent, string child)
+    internal static bool IsWithin(string parent, string child)
     {
         var relative = Path.GetRelativePath(parent, child);
         return !Path.IsPathRooted(relative) && relative != ".." &&

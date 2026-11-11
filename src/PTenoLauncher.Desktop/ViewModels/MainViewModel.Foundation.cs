@@ -1,10 +1,16 @@
 using Avalonia;
 using PTenoLauncher.Core;
+using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Desktop.Localization;
 using PTenoLauncher.Infrastructure.Storage;
 
 namespace PTenoLauncher.Desktop.ViewModels;
 public enum LauncherPage { Home, Profiles, Modpacks, Downloads, Servers, Settings, ProfileWorkspace }
+public sealed record LibraryLoaderOption(ModLoader? Loader)
+{
+    public bool IsAll => Loader is null;
+}
+
 public sealed partial class MainViewModel
 {
     internal LauncherServices Services => services;
@@ -21,6 +27,8 @@ public sealed partial class MainViewModel
                 WorkspaceProfileId = null;
             }
             if (!Set(ref page, value)) return;
+            if (value is LauncherPage.Home or LauncherPage.Profiles or LauncherPage.ProfileWorkspace)
+                RefreshInstallationAction();
             RefreshWorkspaceView();
             foreach (var name in new[] { nameof(IsHome), nameof(IsProfiles), nameof(IsModpacks), nameof(IsDownloads), nameof(IsServers), nameof(IsSettings), nameof(PageTitle) }) Changed(name);
         }
@@ -28,7 +36,7 @@ public sealed partial class MainViewModel
     public bool IsHome => Page == LauncherPage.Home;
     public string PreviewVersion => PTenoLauncher.Infrastructure.Updates.LauncherBuild.Current.Version + " · Development Preview";
     public bool IsProfiles => Page == LauncherPage.Profiles;
-    public bool CanManageMods => SelectedProfile is { Loader: not ModLoader.Vanilla };
+    public bool CanManageMods => ProfileContentCompatibility.Mods(SelectedProfile) != ContentSupport.Unsupported;
     public bool IsModpacks => Page == LauncherPage.Modpacks;
     public bool IsDownloads => Page == LauncherPage.Downloads;
     public bool IsServers => Page == LauncherPage.Servers;
@@ -52,15 +60,47 @@ public sealed partial class MainViewModel
     public bool ShowSignIn => !DataLoadFailed && NeedsSignIn;
     public string ActiveName => SelectedProfile?.Name ?? "";
     public string ActiveVersion => SelectedProfile?.Summary ?? "";
-    public bool HomeHasInstallation => SelectedProfile is { } profile && File.Exists(services.Paths.Receipt(profile.Id));
-    public bool HomeNeedsRepair => HomeHasInstallation && readinessReport?.Issues.Any(issue =>
-        issue.Code is "file.invalid" or "manifest.corrupt" or "game.missing" or "version.mismatch" or "loader.mismatch") == true;
-    public bool HomeShowsPlay => HomeHasInstallation && !HomeNeedsRepair && !IsGameLaunchActive;
-    public bool HomeShowsInstall => !HomeHasInstallation && !IsGameLaunchActive;
-    public bool HomeShowsRepair => HomeNeedsRepair && !IsGameLaunchActive;
+    private GameInstallationState installationState = GameInstallationState.Checking;
+    private CancellationTokenSource? installationCheck;
+    public bool HomeShowsPlay => HasProfile && installationState == GameInstallationState.Ready && !IsGameLaunchActive;
+    public bool HomeShowsInstall => HasProfile && installationState == GameInstallationState.Install && !IsGameLaunchActive;
+    public bool HomeShowsRepair => HasProfile && installationState == GameInstallationState.Repair && !IsGameLaunchActive;
+    public bool GameInstallationChecking => HasProfile && installationState == GameInstallationState.Checking && !IsGameLaunchActive;
     private void RefreshHomeAction()
     {
-        foreach (var name in new[] { nameof(HomeShowsPlay), nameof(HomeShowsInstall), nameof(HomeShowsRepair) }) Changed(name);
+        foreach (var name in new[] { nameof(HomeShowsPlay), nameof(HomeShowsInstall), nameof(HomeShowsRepair), nameof(GameInstallationChecking) }) Changed(name);
+        LaunchCommand?.Refresh();
+    }
+
+    internal void CancelInstallationCheck() => installationCheck?.Cancel();
+
+    private async void RefreshInstallationAction()
+    {
+        CancelInstallationCheck();
+        installationState = GameInstallationState.Checking;
+        RefreshHomeAction();
+        if (SelectedProfile is not { } profile) return;
+        using var request = new CancellationTokenSource();
+        installationCheck = request;
+        try
+        {
+            var state = await Task.Run(() => services.Readiness.GetInstallationStateAsync(profile, request.Token), request.Token);
+            if (!request.IsCancellationRequested && SelectedProfile == profile) installationState = state;
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            services.Log.Error("game.installation-state", error);
+            if (!request.IsCancellationRequested && SelectedProfile == profile) installationState = GameInstallationState.Repair;
+        }
+        finally
+        {
+            if (installationCheck == request)
+            {
+                installationCheck = null;
+                RefreshHomeAction();
+            }
+        }
     }
     public string ActiveIcon => SelectedProfile is { Name.Length: > 0 } p ? System.Globalization.StringInfo.GetNextTextElement(p.Name).ToUpperInvariant() : "P";
     public string ActiveMods
@@ -79,18 +119,21 @@ public sealed partial class MainViewModel
     private IReadOnlyList<GameProfile> allProfiles = [];
     private bool libraryGrid, libraryByLoader;
     private string? libraryQuery;
-    private ModLoader? libraryLoader;
+    private static readonly LibraryLoaderOption AllLibraryLoaders = new(null);
+    private LibraryLoaderOption libraryLoader = AllLibraryLoaders;
     public bool LibraryGrid { get => libraryGrid; set => Set(ref libraryGrid, value); }
     public bool LibraryByLoader { get => libraryByLoader; set { if (Set(ref libraryByLoader, value)) Changed(nameof(LibraryProfiles)); } }
     public string? LibraryQuery { get => libraryQuery; set { if (Set(ref libraryQuery, value)) Changed(nameof(LibraryProfiles)); } }
-    public ModLoader? LibraryLoader { get => libraryLoader; set { if (Set(ref libraryLoader, value)) Changed(nameof(LibraryProfiles)); } }
-    public ModLoader[] LibraryLoaders { get; } = Enum.GetValues<ModLoader>();
+    public LibraryLoaderOption LibraryLoader { get => libraryLoader; set { if (Set(ref libraryLoader, value ?? AllLibraryLoaders)) Changed(nameof(LibraryProfiles)); } }
+    public IReadOnlyList<LibraryLoaderOption> LibraryLoaders { get; } =
+        [AllLibraryLoaders, ..Enum.GetValues<ModLoader>().Select(loader => new LibraryLoaderOption(loader))];
     public IReadOnlyList<GameProfile> LibraryProfiles
     {
         get
         {
             var rows = allProfiles.Where(p => (ShowArchived || !p.Archived) &&
-                (LibraryLoader is null || p.Loader == LibraryLoader) &&
+                (LibraryGroup.Name is not { } group || string.Equals(group, OrganizationFor(p.Id).Group, StringComparison.OrdinalIgnoreCase)) &&
+                (LibraryLoader.Loader is not { } loader || p.Loader == loader) &&
                 (p.Name.Contains(LibraryQuery ?? "", StringComparison.OrdinalIgnoreCase) ||
                  p.MinecraftVersion.Contains(LibraryQuery ?? "", StringComparison.OrdinalIgnoreCase)));
             return (LibraryByLoader ? rows.OrderBy(p => p.Loader).ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)

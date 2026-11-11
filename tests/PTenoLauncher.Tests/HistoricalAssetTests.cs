@@ -291,4 +291,53 @@ public sealed class HistoricalAssetTests
         Assert.Throws<NotSupportedException>(() => LaunchArgumentExpansion.Expand("${unknown}", values));
         Assert.Equal(["--empty", "", "two words"], LegacyArguments.Split("--empty \"\" \"two words\""));
     }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void WindowsGameLaunchPreservesUnicodeProfilePaths(bool unicodeProfile, bool unicodeDataRoot)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var ws = new TestWorkspace();
+        var paths = unicodeDataRoot ? new LauncherPaths(SafePath.Join(ws.Paths.Root, "Дані лаунчера")) : ws.Paths;
+        paths.Initialize();
+        var profile = ws.Profile() with { Name = unicodeProfile ? "Тестовий світ" : "Test World", JavaPath = "java.exe" };
+        paths.CreateProfile(profile);
+        var game = paths.Game(profile.Id);
+        var natives = GameLauncher.NativeDirectory(paths, profile.Id, Guid.NewGuid());
+        var receipt = new InstallationReceipt("1.21.1", 21, "fixture.Main", DateTimeOffset.UtcNow,
+            [], ["objects/client.jar", "objects/library.jar"], [],
+            ["-Djava.library.path=${natives_directory}", "-Djna.tmpdir=${natives_directory}",
+                "-Dorg.lwjgl.system.SharedLibraryExtractPath=${natives_directory}", "-Dio.netty.native.workdir=${natives_directory}",
+                "-Dlog4j.configurationFile=${library_directory}/logging/client.xml", "-cp", "${classpath}"],
+            ["--gameDir", "${game_directory}", "--assetsDir", "${assets_root}", "--legacyAssets", "${game_assets}"],
+            "fixture", LegacyAssets: new(new string('0', 40), false, true, []));
+        var session = new MinecraftSession(new("00000000000000000000000000000000", "Fixture", DateTimeOffset.UtcNow),
+            "fixture-token", DateTimeOffset.UtcNow);
+
+        var start = GameLauncher.CreateStartInfo(paths, profile, receipt, natives, session, launchOffline: false);
+        var args = start.ArgumentList.ToArray();
+        string After(string flag) => args[Array.IndexOf(args, flag) + 1];
+        string Resolve(string path) => Path.GetFullPath(path, start.WorkingDirectory);
+
+        Assert.Equal(game, start.WorkingDirectory);
+        Assert.Equal(profile.Name, Path.GetFileName(Path.GetDirectoryName(game)));
+        if (!unicodeDataRoot)
+            Assert.Equal(unicodeProfile ? paths.Cache : paths.Profile(profile.Id), Path.GetDirectoryName(natives));
+        if (unicodeDataRoot && Path.GetTempPath().All(char.IsAscii))
+            Assert.Equal(Path.TrimEndingDirectorySeparator(Path.GetTempPath()), Path.GetDirectoryName(natives));
+        Assert.All(args, arg => Assert.All(arg, c => Assert.True(char.IsAscii(c))));
+        Assert.Equal(unicodeProfile ? "." : game, After("--gameDir"));
+        Assert.Equal(game, Resolve(After("--gameDir")));
+        Assert.Equal(SafePath.Join(paths.Cache, "assets"), Resolve(After("--assetsDir")));
+        Assert.Equal(SafePath.Join(game, "resources"), Resolve(After("--legacyAssets")));
+        Assert.Equal(receipt.Classpath.Select(file => SafePath.Join(paths.Cache, file)),
+            After("-cp").Split(Path.PathSeparator).Select(Resolve));
+        foreach (var flag in new[] { "-Djava.library.path=", "-Djna.tmpdir=", "-Dorg.lwjgl.system.SharedLibraryExtractPath=", "-Dio.netty.native.workdir=" })
+            Assert.Equal(natives, Resolve(Assert.Single(args, arg => arg.StartsWith(flag, StringComparison.Ordinal))[flag.Length..]));
+        const string logging = "-Dlog4j.configurationFile=";
+        Assert.Equal(SafePath.Join(paths.Cache, "logging/client.xml"),
+            Resolve(Assert.Single(args, arg => arg.StartsWith(logging, StringComparison.Ordinal))[logging.Length..]));
+    }
 }

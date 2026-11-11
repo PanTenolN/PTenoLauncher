@@ -55,6 +55,44 @@ public sealed class WorkingConfigurationTests
     }
 
     [Fact]
+    public async Task ExplicitRenameUpdatesSavedWorkingSnapshotWithoutEnablingAJar()
+    {
+        using var fixture = new ModUpdateTests.Fixture();
+        await fixture.Start();
+        var profile = fixture.Profile;
+        var receipt = await InstallReceipt(fixture, profile, "0.16.9");
+        var old = "mods/" + ModUpdateTests.Fixture.Sha512(fixture.Bytes["B1"]) + "-b.jar.disabled";
+        await fixture.Add(old, fixture.Bytes["B1"], owned: false);
+        await fixture.Manager.MarkWorkingAsync(profile, await Capture(fixture, profile, receipt), confirmed: true);
+        var renamer = new ProfileFileRenamer(fixture.Ws.Paths, fixture.Ws.Store, fixture.Local, new(fixture.Ws.Paths));
+        await renamer.ApplyAsync(await renamer.PreviewAsync(profile.Id, old));
+        var mod = Assert.Single((await fixture.Manager.ReadWorkingAsync(profile.Id))!.Mods, mod => !mod.Enabled);
+        Assert.Equal(Disabled, mod.File.Path);
+        Assert.True(File.Exists(fixture.Physical(Disabled)));
+        Assert.False(File.Exists(fixture.Physical("mods/b.jar")));
+    }
+
+    [Fact]
+    public async Task WorkingRestoreReusesVerifiedReadableNameAndPreservesDisabledState()
+    {
+        using var fixture = new ModUpdateTests.Fixture();
+        await fixture.Start();
+        var receipt = await InstallReceipt(fixture, fixture.Profile, "0.16.9");
+        var old = "mods/" + ModUpdateTests.Fixture.Sha512(fixture.Bytes["B1"]) + "-Mezz Config.jar.disabled";
+        await fixture.Add(old, fixture.Bytes["B1"], owned: false);
+        await fixture.Manager.MarkWorkingAsync(fixture.Profile, await Capture(fixture, fixture.Profile, receipt), confirmed: true);
+        File.Delete(fixture.Physical(old));
+        fixture.Network.Offline = true;
+        var preview = await fixture.Manager.PreviewWorkingAsync(fixture.Profile);
+        Assert.True(preview.CanApply, string.Join("\n", preview.Plan.Blockers));
+        await fixture.Manager.ApplyAsync(fixture.Profile, preview.Plan, true);
+        var actual = fixture.Physical("mods/Mezz Config.jar.disabled");
+        Assert.Equal(fixture.Bytes["B1"], await File.ReadAllBytesAsync(actual));
+        Assert.False(File.Exists(fixture.Physical(old)));
+        Console.WriteLine($"Physical restored names: {fixture.Physical(old)} → {actual}");
+    }
+
+    [Fact]
     public async Task ExplicitMarkPersistsExactLaunchedFilesAndNeverReplacesWorkingStateOnAnotherLaunch()
     {
         using var fixture = new ModUpdateTests.Fixture();

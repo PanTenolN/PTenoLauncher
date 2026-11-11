@@ -36,7 +36,7 @@ public sealed partial class LocalModManager
         return output.ToArray();
     }
     private async Task<FabricModMetadata?> ReadEmbeddedFabricAsync(ZipArchive zip, int depth, EmbeddedBudget budget,
-        List<ProvidedMod> provided, List<string> metadataWarnings, CancellationToken ct)
+        List<ProvidedMod> provided, List<string> metadataWarnings, CancellationToken ct, string side)
     {
         if (depth > 4 || ++budget.Count > 65) throw new InvalidDataException("Перевищено ліміт вкладених JAR.");
         var meta = zip.GetEntry("fabric.mod.json");
@@ -44,7 +44,7 @@ public sealed partial class LocalModManager
         using var doc = JsonDocument.Parse(await ReadBoundedEntryAsync(meta, 1024 * 1024, ct));
         var root = doc.RootElement;
         var environment = ReadFabricEnvironment(root);
-        if (environment == "server") return null;
+        if (environment is "server" or "client" && environment != side) return null;
         if (environment == "unknown") metadataWarnings.Add("Невідоме середовище вкладеного Fabric JAR.");
         var version = RequiredFabricText(root, "version");
         if (depth > 0 && (!root.TryGetProperty("schemaVersion", out var schema) || !schema.TryGetInt32(out var schemaNumber) || schemaNumber != 1))
@@ -81,7 +81,7 @@ public sealed partial class LocalModManager
             var bytes = await ReadBoundedEntryAsync(entry, 32 * 1024 * 1024, ct);
             using var memory = new MemoryStream(bytes, false); using var nested = new ZipArchive(memory, ZipArchiveMode.Read);
             SafeArchive.Validate(nested, paths.Cache);
-            var metadata = await ReadEmbeddedFabricAsync(nested, depth + 1, budget, provided, metadataWarnings, ct);
+            var metadata = await ReadEmbeddedFabricAsync(nested, depth + 1, budget, provided, metadataWarnings, ct, side);
             if (metadata is not null) children.Add(metadata);
         }
         return new(modId, version, supplied, requirements, children);

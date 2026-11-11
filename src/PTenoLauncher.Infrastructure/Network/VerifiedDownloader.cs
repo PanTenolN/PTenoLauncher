@@ -37,12 +37,13 @@ public sealed class VerifiedDownloader(HttpClient client, NetworkPolicy policy)
         return Convert.ToHexString(actual).Equals(hash, StringComparison.OrdinalIgnoreCase);
     }
     public async Task DownloadAsync(Uri uri, string destination, string hash, long size, string algorithm = "SHA1",
-        IProgress<DownloadProgress>? progress = null, CancellationToken ct = default, DownloadSource source = DownloadSource.Minecraft)
+        IProgress<DownloadProgress>? progress = null, CancellationToken ct = default, DownloadSource source = DownloadSource.Minecraft,
+        string? displayName = null)
     {
         if (size is < 0 or > 2L * 1024 * 1024 * 1024) throw new InvalidDataException("Недопустимий розмір завантаження.");
         if (algorithm is not ("SHA1" or "SHA256" or "SHA512")) throw new InvalidDataException("Unknown hash algorithm.");
         if (hash.Length != (algorithm == "SHA1" ? 40 : algorithm == "SHA512" ? 128 : 64) || !hash.All(Uri.IsHexDigit)) throw new InvalidDataException("Некоректний хеш.");
-        var fileName = Path.GetFileName(destination);
+        var fileName = displayName ?? Path.GetFileName(destination);
         if (File.Exists(destination)) progress?.Report(new(fileName, 0, size, Verifying: true));
         if (await VerifyAsync(destination, hash, algorithm, size, ct)) return;
         policy.RequireOnline(); TrustedSources.Validate(uri, source); SafePath.RejectLinks(destination);

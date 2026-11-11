@@ -38,6 +38,7 @@ public sealed partial class SqliteLauncherStore(LauncherPaths paths) : ILauncher
             CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS profiles(id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, loader INTEGER NOT NULL, memory INTEGER NOT NULL, java TEXT, created TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS profile_loader_choices(profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, minecraft TEXT NOT NULL, loader INTEGER NOT NULL, loader_version TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS profile_organization(profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, group_name TEXT NOT NULL, notes TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY, profile_id TEXT, at TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS download_history(id TEXT PRIMARY KEY, title TEXT NOT NULL, profile TEXT NOT NULL, at TEXT NOT NULL, result TEXT NOT NULL, pid INTEGER NOT NULL, process_start INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS download_history_details(id TEXT PRIMARY KEY REFERENCES download_history(id) ON DELETE CASCADE, detail TEXT NOT NULL);

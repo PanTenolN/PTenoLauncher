@@ -16,9 +16,9 @@ public sealed partial class MainWindow : Window
     private LauncherUpdateDialog? updateDialog;
     private async void ChooseDataRoot(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false } vm) return;
+        if (DataContext is not MainViewModel { IsIdle: true, IsGameLaunchActive: false, ServerOperationActive: false } vm) return;
         var root = await new DataRootDialog(vm.DataRoot).ShowDialog<string?>(this);
-        if (root is null || !vm.IsIdle || vm.IsGameLaunchActive) return;
+        if (root is null || !vm.IsIdle || vm.IsGameLaunchActive || vm.ServerOperationActive) return;
         try
         {
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException();
@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        MemoryInput.Attach(NewServerMemoryInput);
         ProfileModDropZone.AddHandler(DragDrop.DragOverEvent, OnDragOver);
         ProfileModDropZone.AddHandler(DragDrop.DropEvent, OnDrop);
         DataContextChanged += (_, _) =>
@@ -47,9 +48,16 @@ public sealed partial class MainWindow : Window
             updateVm = DataContext as MainViewModel;
             if (updateVm is not null) { updateVm.LauncherUpdateOffered += OfferLauncherUpdate; updateVm.LauncherRestartReady += RestartLauncher; updateVm.ProfileConsoleUpdated += ScrollProfileConsole; updateVm.EnableWorkspaceWatching(); }
         };
-        Closed += (_, _) => { updateVm?.CancelLauncherUpdateCheck(); updateVm?.DisableWorkspaceWatching(); };
+        Closed += (_, _) => { updateVm?.CancelLauncherUpdateCheck(); updateVm?.DisableWorkspaceWatching(); updateVm?.CancelInstallationCheck(); };
         Closing += (_, e) =>
         {
+            if (DataContext is MainViewModel { ServerOperationActive: true } activeServer)
+            {
+                e.Cancel = true;
+                activeServer.Page = LauncherPage.Servers;
+                activeServer.Status = TextCatalog.Get("ServerCloseFirst");
+                return;
+            }
             if(DataContext is not MainViewModel {TranslationDirty:true} vm)return;
             e.Cancel=true;vm.Status=TextCatalog.Get("AiUxUnsaved");vm.Page=LauncherPage.Settings;
             this.FindControl<TabControl>("SettingsTabs")!.SelectedItem=this.FindControl<TabItem>("MyTranslationsTab");
@@ -93,17 +101,13 @@ public sealed partial class MainWindow : Window
             vm.SelectedProfile = profile;
     }
 
-    private void ClearLibraryLoader(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is MainViewModel vm) vm.LibraryLoader = null;
-    }
-
     private async void Navigate(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm && sender is Button { Tag: string tag } && Enum.TryParse<LauncherPage>(tag, out var page))
         {
             vm.Page = page;
             if (page == LauncherPage.Downloads) await vm.RefreshDownloadHistoryAsync();
+            if (page == LauncherPage.Servers) await vm.LoadServersAsync();
             if(page==LauncherPage.Settings && this.FindControl<TabControl>("SettingsTabs")?.SelectedItem is TabItem{Name:"MyTranslationsTab"} && vm.HasProfile && !vm.IsBusy && !vm.TranslationDirty)await vm.LoadTranslationDraftsAsync();
         }
     }

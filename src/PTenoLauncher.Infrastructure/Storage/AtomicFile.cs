@@ -22,7 +22,7 @@ public static class AtomicFile
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
-    public static async Task WriteAsync(string path, byte[] bytes, CancellationToken ct = default)
+    public static async Task WriteAsync(string path, byte[] bytes, CancellationToken ct = default, bool overwrite = true)
     {
         SafePath.RejectLinks(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -36,7 +36,7 @@ public static class AtomicFile
                 stream.Flush(true);
             }
             using var gate = AcquireGate(path, ct);
-            SafePath.RejectLinks(path); File.Move(temp, path, true);
+            SafePath.RejectLinks(path); File.Move(temp, path, overwrite);
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }

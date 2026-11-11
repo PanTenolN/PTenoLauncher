@@ -22,6 +22,19 @@ public sealed partial class ContentActionDialog : Window
         BackupWorld.IsVisible = BackupDestination.IsVisible = plan.Backup is not null;
         BackupDestination.Text = plan.Backup;
     }
+    internal void OfferWorldBackup() => BackupWorld.IsVisible = true;
+    internal void OfferOptionalAction(string label)
+    {
+        BackupWorld.Content = label;
+        BackupWorld.IsChecked = false;
+        BackupWorld.IsVisible = true;
+    }
+    internal void RequireOptionalAction(string label)
+    {
+        OfferOptionalAction(label);
+        ConfirmAction.IsEnabled = false;
+        BackupWorld.IsCheckedChanged += (_, _) => ConfirmAction.IsEnabled = BackupWorld.IsChecked == true;
+    }
     private void Confirm(object? sender, RoutedEventArgs e) => Close(BackupWorld.IsVisible && BackupWorld.IsChecked == true);
     private void Cancel(object? sender, RoutedEventArgs e) => Close(null);
 }

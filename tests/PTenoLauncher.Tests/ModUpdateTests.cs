@@ -110,6 +110,27 @@ public sealed class ModUpdateTests
         Assert.Equal(f.Bytes["A2"], await File.ReadAllBytesAsync(f.Physical("mods/unrelated-name.jar")));
         Assert.Single(Directory.GetFiles(Path.GetDirectoryName(f.Physical("mods/unrelated-name.jar"))!, "*.jar"));
     }
+    [Fact] public async Task UpdatingALegacyDigestNamePublishesReadableFileAndKeepsRollbackWorking()
+    {
+        using var f = new Fixture(); await f.Start();
+        var legacy = "mods/" + Fixture.Sha512(f.Bytes["A1"]) + "-previous.jar";
+        File.Move(f.Physical("mods/unrelated-name.jar"), f.Physical(legacy));
+        var inventory = new ModInventoryStore(f.Ws.Paths);
+        var before = (await inventory.ReadAsync(f.Profile.Id))!;
+        await AtomicFile.WriteJsonAsync(inventory.PathFor(f.Profile.Id), before with { Files = [before.Files[0] with { RelativePath = legacy }] });
+        f.ProviderFileName = Fixture.Sha512(f.Bytes["A2"]) + "-Current.jar";
+        var plan = await f.Manager.PreviewAsync(f.Profile, [new(legacy, "A2")]);
+        Assert.True(plan.CanApply, string.Join("\n", plan.Blockers));
+        await f.Manager.ApplyAsync(f.Profile, plan, true);
+        Assert.False(File.Exists(f.Physical(legacy)));
+        Assert.Equal(f.Bytes["A2"], await File.ReadAllBytesAsync(f.Physical("mods/Current.jar")));
+        Console.WriteLine($"Physical update paths: {f.Physical(legacy)} → {f.Physical("mods/Current.jar")}");
+        var rollback = await f.Manager.PreviewRollbackAsync(f.Profile, plan.Id);
+        await f.Manager.ApplyAsync(f.Profile, rollback, true);
+        Assert.Equal(f.Bytes["A1"], await File.ReadAllBytesAsync(f.Physical(legacy)));
+        Assert.False(File.Exists(f.Physical("mods/Current.jar")));
+    }
+
     [Fact] public async Task PinsSurviveRestartAndBlockDirectAndDependencyUpdates()
     {
         using var f = new Fixture(); await f.Start(requiredB: true); await f.Add("mods/b.jar", f.Bytes["B1"]);

@@ -96,7 +96,10 @@ public sealed partial class LocalModManager
             mods.Add(new(id, version, ForgeText(mod, "displayName", id), requirements, features));
         }
         if (deps is not null && deps.Keys.Any(key => !ids.Contains(key))) warnings.Add("TOML містить залежності для неоголошеного Mod ID.");
-        return new(language, languageRange, mods);
+        return new(language, languageRange, mods)
+        {
+            ClientSideOnly = loader == ModLoader.Forge && ForgeBool(document, "clientSideOnly", false)
+        };
     }
     private async Task<string?> ReadJarImplementationVersionAsync(ZipArchive zip, CancellationToken ct)
     {

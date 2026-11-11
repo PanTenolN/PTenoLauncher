@@ -36,6 +36,7 @@ public sealed class NetworkPolicy
     {
         var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("PTenoLauncher/" + Updates.LauncherBuild.Current.Version);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("(https://github.com/PanTenolN/PTenoLauncher)");
         return client;
     }
 }

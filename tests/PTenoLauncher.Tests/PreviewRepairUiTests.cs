@@ -6,6 +6,7 @@ using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using PTenoLauncher.Core;
 using PTenoLauncher.Desktop;
 using PTenoLauncher.Desktop.Dialogs;
@@ -19,6 +20,55 @@ namespace PTenoLauncher.Tests;
 
 public sealed class PreviewRepairUiTests
 {
+    [AvaloniaFact]
+    public async Task Vanilla263UsesTheSameInstallReadyAndRepairActionsOnAllThreeScreens()
+    {
+        using var ws = new TestWorkspace();
+        using var services = new LauncherServices(ws.Paths);
+        await services.Store.InitializeAsync();
+        var profile = ws.Profile() with { MinecraftVersion = "26.3" };
+        await services.Store.SaveProfileAsync(profile);
+        var vm = new MainViewModel(services);
+        await vm.InitializeAsync();
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            await VerifyAcrossScreens("HomeInstall", vm.InstallCommand);
+            var jar = await WriteVerifiedFileAsync("versions/26.3/client.jar", "test client");
+            var assets = await WriteVerifiedFileAsync("assets/indexes/fixture.json", """{"objects":{}}""");
+            var receipt = new InstallationReceipt("26.3", 25, "net.minecraft.client.main.Main", DateTimeOffset.UtcNow,
+                [jar, assets], [jar.RelativePath], [], [], [], "fixture");
+            await AtomicFile.WriteJsonAsync(ws.Paths.Receipt(profile.Id), receipt);
+            await VerifyAcrossScreens("Play", vm.LaunchCommand);
+            await File.WriteAllTextAsync(SafePath.Join(ws.Paths.Cache, jar.RelativePath), "bad bytes");
+            await VerifyAcrossScreens("HomeRepair", vm.InstallCommand);
+            Assert.False(vm.LaunchCommand.CanExecute(null));
+        }
+        finally { window.Close(); }
+
+        async Task VerifyAcrossScreens(string expected, AsyncCommand command)
+        {
+            foreach (var page in new[] { LauncherPage.Home, LauncherPage.Profiles, LauncherPage.ProfileWorkspace })
+            {
+                if (page == LauncherPage.ProfileWorkspace) vm.OpenProfileWorkspace(profile.Id);
+                else vm.Page = page;
+                await WaitForAsync(() => !vm.GameInstallationChecking);
+                var action = Assert.Single(window.GetVisualDescendants().OfType<Button>(), button =>
+                    button.IsEffectivelyVisible && (button.Command == vm.InstallCommand || button.Command == vm.LaunchCommand));
+                Assert.Equal(TextCatalog.Get(expected), action.Content);
+                Assert.Same(command, action.Command);
+            }
+        }
+
+        async Task<InstalledFile> WriteVerifiedFileAsync(string relative, string value)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+            await AtomicFile.WriteAsync(SafePath.Join(ws.Paths.Cache, relative), bytes);
+            return new(relative, Convert.ToHexString(SHA256.HashData(bytes)), "SHA256", bytes.Length);
+        }
+    }
+
     [AvaloniaFact]
     public async Task StartupUsesTheSelectedDatabaseAndReportsCorruptionSeparately()
     {

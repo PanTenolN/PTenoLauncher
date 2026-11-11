@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using PTenoLauncher.Core;
+using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Mods;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
@@ -149,6 +150,7 @@ public sealed partial class MrpackImporter(LauncherPaths paths, SqliteLauncherSt
             }
         }
         if (instance is null && copyPrepared is null && await MrpackReader.HashFile(fresh.Archive, ct) != fresh.ArchiveSha256) throw new MrpackException("PackChanged");
+        await NormalizeImportedNamesAsync(staged, p.Id, ct);
         var gameFiles = await Inventory(staged.Game(p.Id), ct);
         var inspector = new LocalModManager(staged, store); var jars = new List<ModCartItem>();
         foreach (var file in gameFiles.Where(f => MrpackReader.RootJar(f.RelativePath)))
@@ -174,6 +176,60 @@ public sealed partial class MrpackImporter(LauncherPaths paths, SqliteLauncherSt
         ct.ThrowIfCancellationRequested();
         await AtomicFile.WriteJsonAsync(Journal(p.Id), journal, ct); Fault?.Invoke("ready");
         await Commit(journal, copyPrepared is null ? ct : CancellationToken.None); return new(p, receipt);
+    }
+
+    private async Task NormalizeImportedNamesAsync(LauncherPaths staged, Guid profile, CancellationToken ct)
+    {
+        var game = staged.Game(profile);
+        var inspector = new LocalModManager(staged, store);
+        foreach (var category in new[] { "mods", "resourcepacks", "shaderpacks" })
+        {
+            var folder = SafePath.Join(game, category);
+            if (!Directory.Exists(folder)) continue;
+            foreach (var source in Directory.GetFiles(folder).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                ct.ThrowIfCancellationRequested();
+                var name = Path.GetFileName(source);
+                var disabled = category == "mods" && name.EndsWith(".jar.disabled", StringComparison.OrdinalIgnoreCase);
+                var logical = disabled ? name[..^".disabled".Length] : name;
+                var suffix = category == "mods" ? ".jar" : ".zip";
+                if (!logical.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) || !ReadableName.LooksTechnical(logical[..^suffix.Length])) continue;
+                string sha256, sha512;
+                await using (var stream = File.OpenRead(source))
+                {
+                    sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct));
+                    stream.Position = 0;
+                    sha512 = Convert.ToHexStringLower(await SHA512.HashDataAsync(stream, ct));
+                }
+                if (ReadableName.StripDigest(logical[..^suffix.Length], sha256, sha512) is not { } clean) continue;
+                string target;
+                if (category == "mods")
+                {
+                    var mod = await inspector.InspectPayloadAsync(source, logical, ct);
+                    target = SafePath.Join(game, LocalModManager.ChooseInstallPath(game, name, sha256, new(StringComparer.OrdinalIgnoreCase),
+                        LocalModManager.ModName(mod), sha512));
+                }
+                else
+                {
+                    if (category == "shaderpacks" && new[] { "optionsshaders.txt", "config/iris.properties", "config/oculus.properties", "config/canvas.json5" }
+                        .Any(path => File.Exists(SafePath.Join(game, path)))) continue;
+                    target = ReadableName.Free(folder, ReadableName.Stem(clean, "Pack"), suffix);
+                    var options = SafePath.Join(game, "options.txt");
+                    if (category == "resourcepacks" && File.Exists(options))
+                    {
+                        byte[] before, after;
+                        try
+                        {
+                            before = await AtomicFile.ReadBytesAsync(options, 2 * 1024 * 1024, ct);
+                            after = ProfileContent.RebasePackOptions(before, name, Path.GetFileName(target));
+                        }
+                        catch (InvalidDataException) { continue; }
+                        if (!ReferenceEquals(before, after)) await AtomicFile.WriteAsync(options, after, ct);
+                    }
+                }
+                File.Move(source, target, false);
+            }
+        }
     }
     private async Task VerifyDownloadAsync(MrpackDownload file, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {

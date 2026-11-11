@@ -14,7 +14,7 @@ public static partial class LiveProcessRunner
 
     public static async Task<int> RunAsync(ProcessStartInfo info, string logFile, Func<Process, Task>? started = null,
         IProgress<string>? output = null, IReadOnlyList<string>? secrets = null, CancellationToken ct = default,
-        bool formatMinecraftLog = false)
+        bool formatMinecraftLog = false, bool requireStartupCallback = false)
     {
         ct.ThrowIfCancellationRequested();
         info.UseShellExecute = false; info.CreateNoWindow = true;
@@ -130,7 +130,7 @@ public static partial class LiveProcessRunner
             if (started is not null)
                 try { await started(process); }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-                catch (Exception ex)
+                catch (Exception ex) when (!requireStartupCallback)
                 {
                     await gate.WaitAsync();
                     try { await writer.WriteLineAsync("Startup diagnostics: " + ex.GetType().Name); }

@@ -69,6 +69,7 @@ public sealed class AdditionalLanguagesTests
             Assert.Equal(language, TextCatalog.Language);
             Assert.Equal(home, TextCatalog.Get("Home"));
             Assert.Equal(save, TextCatalog.Get("Save"));
+            Assert.Equal(TextCatalog.Get("Servers"), window.FindControl<Button>("ServersNavButton")!.Content);
             await vm.RunProfileConsoleAsync(profile.Id, (output, _, _, _) =>
             {
                 output.Report("Synthetic original log: Привіт / Hello / {token-redacted}");

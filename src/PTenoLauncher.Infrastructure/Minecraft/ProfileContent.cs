@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using PTenoLauncher.Core;
 using PTenoLauncher.Infrastructure.Modpacks;
 using PTenoLauncher.Infrastructure.Security;
 using PTenoLauncher.Infrastructure.Storage;
@@ -7,9 +8,11 @@ using PTenoLauncher.Infrastructure.Storage;
 namespace PTenoLauncher.Infrastructure.Minecraft;
 
 public enum ProfileContentKind { ResourcePacks, Shaders, Worlds }
-public sealed record ProfileContentEntry(string FileName, string Name, bool Directory);
+public enum ResourcePackCompatibility { Unknown, Compatible, Incompatible }
+public sealed record ProfileContentEntry(string FileName, string Name, bool Directory,
+    ResourcePackCompatibility Compatibility = ResourcePackCompatibility.Unknown, bool? Enabled = null);
 
-public sealed partial class ProfileContent(LauncherPaths paths)
+public sealed partial class ProfileContent(LauncherPaths paths, BackupManager? backupManager = null)
 {
     private const int MetadataLimit = 128 * 1024;
     private const int PackEntryLimit = 50000;
@@ -28,10 +31,19 @@ public sealed partial class ProfileContent(LauncherPaths paths)
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     });
 
-    public async Task<IReadOnlyList<ProfileContentEntry>> ListAsync(Guid profile, ProfileContentKind kind, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ProfileContentEntry>> ListAsync(Guid profile, ProfileContentKind kind, CancellationToken ct = default,
+        GameProfile? profileInfo = null)
     {
         var folder = Folder(profile, kind);
         if (!Directory.Exists(folder)) return [];
+        var inspectOptions = kind == ProfileContentKind.ResourcePacks && profileInfo?.Id == profile;
+        var format = inspectOptions ? await FindResourceFormatAsync(profileInfo!, ct) : null;
+        PackOptions? options = null;
+        if (inspectOptions)
+        {
+            try { options = await ReadPackOptionsAsync(profile, ct); }
+            catch (Exception error) when (error is IOException or InvalidDataException or JsonException) { }
+        }
         var rows = new List<ProfileContentEntry>();
         foreach (var path in Directory.EnumerateFileSystemEntries(folder).Take(1000).Order(StringComparer.OrdinalIgnoreCase))
         {
@@ -48,6 +60,7 @@ public sealed partial class ProfileContent(LauncherPaths paths)
             }
             if (!directory && !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) continue;
             string? name = null;
+            (int Min, int Max)? range = null;
             if (kind == ProfileContentKind.ResourcePacks)
             {
                 try
@@ -62,7 +75,7 @@ public sealed partial class ProfileContent(LauncherPaths paths)
                             {
                                 var bytes = new byte[(int)stream.Length];
                                 await stream.ReadExactlyAsync(bytes, ct);
-                                name = ResourceName(bytes);
+                                name = ResourceName(bytes, out range);
                             }
                         }
                     }
@@ -71,12 +84,16 @@ public sealed partial class ProfileContent(LauncherPaths paths)
                         MrpackReader.CheckContainer(path, PackEntryLimit);
                         using var zip = ZipFile.OpenRead(path);
                         if (zip.GetEntry("pack.mcmeta") is { } entry)
-                            name = ResourceName(await MrpackReader.EntryBytes(entry, MetadataLimit, ct));
+                            name = ResourceName(await MrpackReader.EntryBytes(entry, MetadataLimit, ct), out range);
                     }
                 }
                 catch (Exception e) when (e is IOException or InvalidDataException or JsonException or ArgumentException or InvalidOperationException) { }
             }
-            rows.Add(new(file, name ?? (directory ? file : Path.GetFileNameWithoutExtension(file)), directory));
+            var compatibility = format is { } expected && range is { } declared
+                ? expected >= declared.Min && expected <= declared.Max ? ResourcePackCompatibility.Compatible : ResourcePackCompatibility.Incompatible
+                : ResourcePackCompatibility.Unknown;
+            rows.Add(new(file, name ?? (directory ? file : Path.GetFileNameWithoutExtension(file)), directory,
+                compatibility, options?.IsEnabled(file)));
         }
         return rows;
     }
@@ -123,8 +140,10 @@ public sealed partial class ProfileContent(LauncherPaths paths)
             if (ReadableName.LooksTechnical(original))
             {
                 await using var staged = File.OpenRead(pending);
-                stripped = ReadableName.StripDigest(original, expectedSha512,
-                    Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(staged, ct)));
+                var sha256 = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(staged, ct));
+                staged.Position = 0;
+                var sha512 = expectedSha512 ?? Convert.ToHexString(await System.Security.Cryptography.SHA512.HashDataAsync(staged, ct));
+                stripped = ReadableName.StripDigest(original, sha256, sha512);
             }
             var stem = ReadableName.Stem(stripped ?? original, ReadableName.Stem(catalogTitle ?? title ?? "Pack", "Pack"), 120);
             var destination = ReadableName.Free(folder, stem, ".zip");
@@ -153,32 +172,40 @@ public sealed partial class ProfileContent(LauncherPaths paths)
             if (kind == ProfileContentKind.ResourcePacks)
             {
                 var metadata = zip.GetEntry("pack.mcmeta") ?? throw new InvalidDataException("ContentResourceRoot");
-                name = ResourceName(await MrpackReader.EntryBytes(metadata, MetadataLimit, ct));
+                name = ResourceName(await MrpackReader.EntryBytes(metadata, MetadataLimit, ct), out _);
             }
             else if (!zip.Entries.Any(e => e.FullName.StartsWith("shaders/", StringComparison.Ordinal) &&
                 Path.GetExtension(e.FullName) is ".vsh" or ".fsh" or ".csh"))
                 throw new InvalidDataException("ContentShaderRoot");
-            var buffer = new byte[81920];
             foreach (var entry in zip.Entries.Where(e => !e.FullName.EndsWith('/')))
-            {
-                await using var stream = entry.Open();
-                uint crc = uint.MaxValue;
-                long size = 0;
-                int read;
-                while ((read = await stream.ReadAsync(buffer, ct)) != 0)
-                {
-                    if ((size += read) > entry.Length) throw new InvalidDataException("ContentInvalidZip");
-                    for (var i = 0; i < read; i++) crc = CrcTable[(crc ^ buffer[i]) & 255] ^ (crc >> 8);
-                }
-                if (size != entry.Length || ~crc != entry.Crc32) throw new InvalidDataException("ContentInvalidZip");
-            }
+                await CopyArchiveEntryAsync(entry, Stream.Null, ct);
             return name;
         }
         catch (Exception e) when (e is JsonException or ArgumentException or MrpackException)
         { throw new InvalidDataException("ContentInvalidZip", e); }
     }
 
-    private static string? ResourceName(byte[] bytes)
+    internal static async Task CopyArchiveEntryAsync(ZipArchiveEntry entry, Stream destination, CancellationToken ct)
+    {
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(81920);
+        try
+        {
+            await using var stream = entry.Open();
+            uint crc = uint.MaxValue;
+            long size = 0;
+            int read;
+            while ((read = await stream.ReadAsync(buffer, ct)) != 0)
+            {
+                if ((size += read) > entry.Length) throw new InvalidDataException("ContentInvalidZip");
+                for (var i = 0; i < read; i++) crc = CrcTable[(crc ^ buffer[i]) & 255] ^ (crc >> 8);
+                await destination.WriteAsync(buffer.AsMemory(0, read), ct);
+            }
+            if (size != entry.Length || ~crc != entry.Crc32) throw new InvalidDataException("ContentInvalidZip");
+        }
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
+    }
+
+    private static string? ResourceName(byte[] bytes, out (int Min, int Max)? range)
     {
         using var json = MrpackReader.Json(bytes);
         var root = json.RootElement;
@@ -189,6 +216,7 @@ public sealed partial class ProfileContent(LauncherPaths paths)
               pack.TryGetProperty("min_format", out var min) && FormatNumber(min) &&
               pack.TryGetProperty("max_format", out var max) && FormatNumber(max)))
             throw new InvalidDataException("ContentResourceRoot");
+        range = ReadResourceRange(pack);
         var text = new System.Text.StringBuilder();
         void Append(JsonElement element)
         {

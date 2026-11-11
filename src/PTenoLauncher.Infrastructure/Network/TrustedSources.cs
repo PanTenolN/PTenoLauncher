@@ -1,6 +1,6 @@
 namespace PTenoLauncher.Infrastructure.Network;
 
-public enum DownloadSource { Minecraft, Modrinth, Temurin, MinecraftSkin, Fabric, Quilt, Forge, NeoForge, LauncherUpdate, Mrpack }
+public enum DownloadSource { Minecraft, Modrinth, Temurin, MinecraftSkin, Fabric, Quilt, Forge, NeoForge, LauncherUpdate, Mrpack, Paper, Purpur, MinecraftProfile }
 public sealed class UntrustedMrpackSourceException(string host) : IOException("Unsupported modpack download origin: " + host)
 { public string Host { get; } = host; }
 public static class TrustedSources
@@ -13,6 +13,13 @@ public static class TrustedSources
             throw new InvalidDataException("Джерело повинно використовувати HTTPS без сторонніх облікових даних.");
         bool allowed = source switch
         {
+            DownloadSource.Paper => uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
+                (uri.Host == "fill.papermc.io" && (uri.AbsolutePath == "/v3/projects/paper" || uri.AbsolutePath.StartsWith("/v3/projects/paper/", StringComparison.Ordinal)) ||
+                 uri.Host == "fill-data.papermc.io" && uri.AbsolutePath.StartsWith("/v1/objects/", StringComparison.Ordinal)),
+            DownloadSource.Purpur => uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
+                uri.Host == "api.purpurmc.org" && (uri.AbsolutePath == "/v2/purpur" || uri.AbsolutePath.StartsWith("/v2/purpur/", StringComparison.Ordinal)),
+            DownloadSource.MinecraftProfile => uri.Host == "api.minecraftservices.com" && uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
+                uri.AbsolutePath.StartsWith("/minecraft/profile/lookup/name/", StringComparison.Ordinal),
             DownloadSource.LauncherUpdate => uri.Fragment.Length == 0 &&
                 (uri.Host == "github.com" && uri.Query.Length == 0 && (uri.AbsolutePath.StartsWith("/PanTenolN/PTenoLauncher/releases/download/", StringComparison.Ordinal) || uri.AbsolutePath == "/PanTenolN/PTenoLauncher/releases/latest/download/launcher-updates.json") ||
                  uri.Host == "release-assets.githubusercontent.com"),

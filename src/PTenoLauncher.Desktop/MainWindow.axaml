@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:dialogs="using:PTenoLauncher.Desktop.Dialogs" x:Class="PTenoLauncher.Desktop.MainWindow" Title="PTenoLauncher" Width="1220" Height="800" MinWidth="980" MinHeight="680" WindowStartupLocation="CenterScreen">
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:dialogs="using:PTenoLauncher.Desktop.Dialogs" xmlns:local="using:PTenoLauncher.Desktop" x:Class="PTenoLauncher.Desktop.MainWindow" Title="PTenoLauncher" Width="1220" Height="800" MinWidth="980" MinHeight="680" WindowStartupLocation="CenterScreen">
   <Grid RowDefinitions="*,Auto">
     <Grid ColumnDefinitions="Auto,*">
       <Border Width="208" IsVisible="{Binding !IsProfileWorkspace}" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0" Padding="18,26">
@@ -8,7 +8,7 @@
             <Button Content="{DynamicResource Text.Home}" Tag="Home" Click="Navigate" Classes="nav"/>
             <Button Content="{DynamicResource Text.Profiles}" Tag="Profiles" Click="Navigate" Classes="nav"/>
             <Button Content="{DynamicResource Text.Modpacks}" Tag="Modpacks" Click="Navigate" Classes="nav"/>
-            <Button Content="{DynamicResource Text.Servers}" Tag="Servers" Click="Navigate" Classes="nav"/>
+            <Button Name="ServersNavButton" Content="{DynamicResource Text.Servers}" Tag="Servers" Click="Navigate" Classes="nav"/>
             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="10,16"/>
             <Button Content="{DynamicResource Text.Settings}" Tag="Settings" Click="Navigate" Classes="nav"/>
           </StackPanel>
@@ -42,6 +42,7 @@
                     <Button Content="{DynamicResource Text.HomeRepair}" Command="{Binding InstallCommand}" IsVisible="{Binding HomeShowsRepair}" IsEnabled="{Binding CanInstallGame}" Classes="primary" Margin="0,0,8,8"/>
                     <Button Content="{DynamicResource Text.HomeOpenProfile}" Click="EditProfile" Margin="0,0,0,8"/>
                   </WrapPanel>
+                  <TextBlock Text="{DynamicResource Text.GameInstallationChecking}" IsVisible="{Binding GameInstallationChecking}" Classes="secondary"/>
                 </StackPanel>
               </Border>
               <Border Name="QuiltLoaderPanel" Classes="card" IsVisible="{Binding IsQuiltProfile}"><StackPanel Spacing="12">
@@ -56,31 +57,78 @@
                 <TextBlock Text="{Binding ForgeStatus}" Classes="secondary" TextWrapping="Wrap"/>
               </StackPanel></Border>
               <Border Classes="card"><StackPanel Spacing="14"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{DynamicResource Text.ReadinessTitle}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/><Button Grid.Column="1" Content="{DynamicResource Text.ReadyCheck}" Command="{Binding CheckCommand}"/></Grid><ScrollViewer MaxHeight="170"><TextBlock Text="{Binding Readiness}" TextWrapping="Wrap" Classes="secondary"/></ScrollViewer><TextBlock Text="{DynamicResource Text.LaunchHint}" TextWrapping="Wrap" Classes="secondary"/></StackPanel></Border>
-              <WrapPanel><Button Content="{DynamicResource Text.Backup}" Command="{Binding BackupCommand}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.Restore}" Click="RestoreBackup" Margin="0,0,0,8"/></WrapPanel>
+              <WrapPanel><Button Content="{DynamicResource Text.Backup}" Command="{Binding BackupCommand}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.Restore}" Click="RestoreBackup" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.BackupChooseDirectory}" Click="ChooseBackupDirectory" IsEnabled="{Binding IsIdle}" Margin="0,0,0,8"/></WrapPanel>
             </StackPanel>
           </StackPanel></ScrollViewer>
-          <Grid IsVisible="{Binding IsProfiles}" RowDefinitions="Auto,*" ColumnDefinitions="*,Auto" ColumnSpacing="14">
-            <WrapPanel Grid.ColumnSpan="2" Margin="0,0,0,12">
-              <Button Content="{DynamicResource Text.CreateProfile}" Click="CreateProfile" Classes="primary" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
-              <TextBox Text="{Binding LibraryQuery}" PlaceholderText="{DynamicResource Text.Search}" MinWidth="145" Margin="0,0,8,8"/>
-              <ComboBox ItemsSource="{Binding LibraryLoaders}" SelectedItem="{Binding LibraryLoader}" PlaceholderText="{DynamicResource Text.Loader}" AutomationProperties.Name="{DynamicResource Text.Loader}" MinWidth="125" Margin="0,0,8,8"/>
-              <Button Content="×" Click="ClearLibraryLoader" AutomationProperties.Name="{DynamicResource Text.Loader}" Margin="0,0,8,8"/>
-              <CheckBox Content="{DynamicResource Text.LibraryGrid}" IsChecked="{Binding LibraryGrid}" Click="SaveLibraryLayout" Margin="0,0,8,8"/>
-              <CheckBox Content="{DynamicResource Text.LibraryByLoader}" IsChecked="{Binding LibraryByLoader}" Margin="0,0,8,8"/>
-              <CheckBox Content="{DynamicResource Text.Archived}" IsChecked="{Binding ShowArchived}" Margin="0,0,8,8"/>
-            </WrapPanel>
-            <ListBox Grid.Row="1" Name="ProfileLibrary" Classes.gridMode="{Binding LibraryGrid}" ItemsSource="{Binding LibraryProfiles}" SelectedItem="{Binding SelectedProfile, Mode=OneWay}" SelectionChanged="SelectLibraryProfile" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <Grid IsVisible="{Binding IsProfiles}" RowDefinitions="Auto,Auto,*" ColumnDefinitions="*,Auto" ColumnSpacing="14">
+            <local:ProfileToolbarPanel Name="ProfileLibraryToolbar" Grid.ColumnSpan="2" Margin="0,0,0,12">
+              <local:ProfileToolbarPanel.Styles>
+                <Style Selector=":is(TemplatedControl).profileToolbar">
+                  <Setter Property="Height" Value="38"/>
+                  <Setter Property="VerticalAlignment" Value="Center"/>
+                </Style>
+              </local:ProfileToolbarPanel.Styles>
+              <Grid Name="ProfileLibraryActions" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*" MinWidth="120" MaxWidth="168"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Name="ProfileLibraryCreate" Content="{DynamicResource Text.CreateProfile}" Click="CreateProfile" Classes="primary profileToolbar" IsEnabled="{Binding IsIdle}"/>
+                <TextBox Grid.Column="1" Name="ProfileLibrarySearch" Text="{Binding LibraryQuery}" PlaceholderText="{DynamicResource Text.Search}"
+                         Classes="profileToolbar" VerticalContentAlignment="Center"/>
+                <ComboBox Grid.Column="2" Name="ProfileLibraryLoaderFilter" ItemsSource="{Binding LibraryLoaders}" SelectedItem="{Binding LibraryLoader, Mode=TwoWay}"
+                          AutomationProperties.Name="{DynamicResource Text.Loader}" Classes="profileToolbar" MinWidth="180" VerticalContentAlignment="Center">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <Panel>
+                        <TextBlock Text="{DynamicResource Text.LibraryAllLoaders}" IsVisible="{Binding IsAll}"/>
+                        <TextBlock Text="{Binding Loader}" IsVisible="{Binding !IsAll}"/>
+                      </Panel>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+              <Grid Name="ProfileDisplayOptions" ColumnDefinitions="Auto,*,*" ColumnSpacing="8" VerticalAlignment="Center">
+                <Grid.Styles>
+                  <Style Selector="CheckBox">
+                    <Setter Property="MinHeight" Value="38"/>
+                    <Setter Property="VerticalAlignment" Value="Stretch"/>
+                  </Style>
+                </Grid.Styles>
+                <CheckBox IsChecked="{Binding LibraryGrid}" Click="SaveLibraryLayout" AutomationProperties.Name="{DynamicResource Text.LibraryGrid}">
+                  <TextBlock Text="{DynamicResource Text.LibraryGrid}" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox Grid.Column="1" IsChecked="{Binding LibraryByLoader}" AutomationProperties.Name="{DynamicResource Text.LibraryByLoader}">
+                  <TextBlock Text="{DynamicResource Text.LibraryByLoader}" TextWrapping="Wrap"/>
+                </CheckBox>
+                <CheckBox Grid.Column="2" IsChecked="{Binding ShowArchived}" AutomationProperties.Name="{DynamicResource Text.Archived}">
+                  <TextBlock Text="{DynamicResource Text.Archived}" TextWrapping="Wrap"/>
+                </CheckBox>
+              </Grid>
+            </local:ProfileToolbarPanel>
+            <ComboBox Grid.Row="1" Name="ProfileGroupFilter" IsVisible="{Binding HasLibraryGroups}" ItemsSource="{Binding LibraryGroups}"
+                      SelectedItem="{Binding LibraryGroup, Mode=TwoWay}" AutomationProperties.Name="{DynamicResource Text.ProfileGroup}"
+                      MinWidth="180" Margin="0,0,0,8">
+              <ComboBox.ItemTemplate><DataTemplate><Panel>
+                <TextBlock Text="{DynamicResource Text.ProfileAllGroups}" IsVisible="{Binding IsAll}"/>
+                <TextBlock Text="{Binding Name}" IsVisible="{Binding !IsAll}"/>
+              </Panel></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+            <ListBox Grid.Row="2" Name="ProfileLibrary" Classes.gridMode="{Binding LibraryGrid}" ItemsSource="{Binding LibraryProfiles}" SelectedItem="{Binding SelectedProfile, Mode=OneWay}" SelectionChanged="SelectLibraryProfile" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
               <ListBox.Styles>
                 <Style Selector="ListBox.gridMode"><Setter Property="ItemsPanel"><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></Setter></Style>
                 <Style Selector="ListBox.gridMode ListBoxItem"><Setter Property="Width" Value="170"/><Setter Property="MinHeight" Value="92"/><Setter Property="Margin" Value="0,0,6,6"/></Style>
               </ListBox.Styles><ListBox.ItemTemplate><DataTemplate><Grid ColumnDefinitions="*,Auto" Margin="12"><StackPanel Spacing="6"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Summary}" Classes="secondary" TextWrapping="Wrap"/></StackPanel><TextBlock Grid.Column="1" Text="{DynamicResource Text.ArchivedBadge}" IsVisible="{Binding Archived}" Classes="secondary" VerticalAlignment="Center"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
-            <ScrollViewer Grid.Row="1" Grid.Column="1" Width="205" IsVisible="{Binding HasProfile}" HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer Grid.Row="2" Grid.Column="1" Width="205" IsVisible="{Binding HasProfile}" HorizontalScrollBarVisibility="Disabled">
               <Border Classes="card" Padding="12" VerticalAlignment="Top">
                 <StackPanel Spacing="8">
                   <TextBlock Text="{Binding SelectedProfile.Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                   <TextBlock Text="{Binding SelectedProfile.Summary}" Classes="secondary" TextWrapping="Wrap"/>
-                  <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" HorizontalAlignment="Stretch" Classes="primary"/>
-                  <Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstallGame}" HorizontalAlignment="Stretch"/>
+                  <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" IsVisible="{Binding HomeShowsPlay}" HorizontalAlignment="Stretch" Classes="primary"/>
+                  <Button Content="{DynamicResource Text.HomeInstall}" Command="{Binding InstallCommand}" IsVisible="{Binding HomeShowsInstall}" IsEnabled="{Binding CanInstallGame}" HorizontalAlignment="Stretch" Classes="primary"/>
+                  <Button Content="{DynamicResource Text.HomeRepair}" Command="{Binding InstallCommand}" IsVisible="{Binding HomeShowsRepair}" IsEnabled="{Binding CanInstallGame}" HorizontalAlignment="Stretch" Classes="primary"/>
+                  <TextBlock Text="{DynamicResource Text.GameInstallationChecking}" IsVisible="{Binding GameInstallationChecking}" Classes="secondary" TextWrapping="Wrap"/>
                   <Button Name="ProfilesEditButton" Content="{DynamicResource Text.EditProfile}" Click="EditProfile" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
                   <Button Name="ProfilesFolderButton" Content="{DynamicResource Text.ProfileFolder}" Click="OpenProfileFolder" HorizontalAlignment="Stretch"/>
                   <Button Content="⋯" AutomationProperties.Name="{DynamicResource Text.Settings}" HorizontalAlignment="Stretch"><Button.Flyout><Flyout><StackPanel Spacing="6"><Button Content="{DynamicResource Text.Archive}" Command="{Binding ArchiveCommand}" IsVisible="{Binding !SelectedProfile.Archived}" HorizontalAlignment="Stretch"/>
@@ -98,9 +146,9 @@
                 <Button Content="{DynamicResource Text.WorkspaceOverview}" Click="SelectProfileSection" Tag="Overview" Classes.primary="{Binding WorkspaceOverview}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.WorkspaceVersions}" Click="SelectProfileSection" Tag="Versions" Classes.primary="{Binding WorkspaceVersions}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.Settings}" Click="SelectProfileSection" Tag="Settings" Classes.primary="{Binding WorkspaceSettings}" HorizontalAlignment="Stretch"/>
-                <Button Name="ProfileModsSection" Content="{DynamicResource Text.Mods}" Click="SelectProfileSection" Tag="Mods" Classes.primary="{Binding WorkspaceMods}" HorizontalAlignment="Stretch"/>
-                <Button Name="ProfileResourcePacks" Content="{DynamicResource Text.ContentResourcePacks}" Click="SelectProfileSection" Tag="ResourcePacks" Classes.primary="{Binding WorkspaceResourcePacks}" HorizontalAlignment="Stretch"/>
-                <Button Content="{DynamicResource Text.ContentShaders}" Click="SelectProfileSection" Tag="Shaders" Classes.primary="{Binding WorkspaceShaders}" HorizontalAlignment="Stretch"/>
+                <Button Name="ProfileModsSection" Content="{DynamicResource Text.Mods}" Click="SelectProfileSection" Tag="Mods" Classes.primary="{Binding WorkspaceMods}" IsVisible="{Binding WorkspaceHasModsSection}" HorizontalAlignment="Stretch"/>
+                <Button Name="ProfileResourcePacks" Content="{DynamicResource Text.ContentResourcePacks}" Click="SelectProfileSection" Tag="ResourcePacks" Classes.primary="{Binding WorkspaceResourcePacks}" IsVisible="{Binding WorkspaceHasResourcePacksSection}" HorizontalAlignment="Stretch"/>
+                <Button Name="ProfileShadersSection" Content="{DynamicResource Text.ContentShaders}" Click="SelectProfileSection" Tag="Shaders" Classes.primary="{Binding WorkspaceShaders}" IsVisible="{Binding WorkspaceHasShadersSection}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.ContentWorlds}" Click="SelectProfileSection" Tag="Worlds" Classes.primary="{Binding WorkspaceWorlds}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.WorkspaceConsole}" Click="SelectProfileSection" Tag="Console" Classes.primary="{Binding WorkspaceConsole}" HorizontalAlignment="Stretch"/>
                 <Button Content="{DynamicResource Text.WorkspaceFolders}" Click="SelectProfileSection" Tag="Folders" Classes.primary="{Binding WorkspaceFolders}" HorizontalAlignment="Stretch"/>
@@ -112,15 +160,25 @@
               <Grid IsVisible="{Binding WorkspaceContentVisible}" RowDefinitions="Auto,Auto,*" RowSpacing="10">
                 <StackPanel Spacing="4"><TextBlock Text="{Binding WorkspaceContentHint}" TextWrapping="Wrap"/>
                   <TextBlock Text="{Binding WorkspaceShaderSupport}" IsVisible="{Binding WorkspaceShaders}" TextWrapping="Wrap" Classes="secondary"/>
+                  <TextBlock Text="{Binding WorkspacePackStatus}" IsVisible="{Binding WorkspaceResourcePacks}" TextWrapping="Wrap" Classes="secondary"/>
+                  <TextBlock Text="{DynamicResource Text.WorkspaceCompatibilityUnknown}" IsVisible="{Binding WorkspaceCompatibilityUnknown}" TextWrapping="Wrap" Classes="secondary"/>
+                  <TextBlock Text="{DynamicResource Text.CatalogSearchOffline}" IsVisible="{Binding WorkspacePackCatalogOffline}" TextWrapping="Wrap" Classes="secondary"/>
                 </StackPanel>
                 <WrapPanel Grid.Row="1" IsEnabled="{Binding IsIdle}">
                   <Button Name="WorkspaceAddPack" Content="{DynamicResource Text.ContentAddFile}" Click="ChooseWorkspacePack" IsVisible="{Binding WorkspaceCanImportPack}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentDownloadResources}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceResourcePacks}" IsEnabled="{Binding CanUseOnlineContent}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentDownloadShaders}" Click="OpenWorkspaceContentCatalog" IsVisible="{Binding WorkspaceShaders}" IsEnabled="{Binding CanUseOnlineContent}" Margin="0,0,8,4"/>
+                  <Button Name="WorkspaceFindShaderComponentButton" Content="{DynamicResource Text.ShaderFindComponent}" Click="FindShaderComponent" IsVisible="{Binding WorkspaceFindShaderComponent}" IsEnabled="{Binding CanUseOnlineCatalog}" Margin="0,0,8,4"/>
+                  <Button Name="WorkspaceTogglePackButton" Content="{Binding WorkspacePackAction}" Click="ToggleWorkspacePack" IsVisible="{Binding WorkspaceResourcePacks}" IsEnabled="{Binding CanToggleWorkspacePack}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentOpenFolder}" Click="OpenWorkspaceContent" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldRename}" Click="ManageWorld" Tag="Rename" IsVisible="{Binding WorkspaceWorlds}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldCopy}" Click="ManageWorld" Tag="Copy" IsVisible="{Binding WorkspaceWorlds}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldImportZip}" Click="ManageWorld" Tag="ImportZip" IsVisible="{Binding WorkspaceWorlds}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldRestoreFolder}" Click="ManageWorld" Tag="RestoreFolder" IsVisible="{Binding WorkspaceWorlds}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldExportZip}" Click="ManageWorld" Tag="ExportZip" IsVisible="{Binding WorkspaceWorlds}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
+                  <Button Content="{DynamicResource Text.WorldBackupZip}" Click="ManageWorld" Tag="BackupZip" IsVisible="{Binding WorkspaceWorlds}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.WorkspaceRefresh}" Click="RefreshWorkspaceFiles" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.ContentCopy}" Click="ChangeWorkspaceContent" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
-                  <Button Name="OrganizePackNames" Content="{DynamicResource Text.ProfileNamesOrganize}" Click="RenameWorkspaceFile" IsVisible="{Binding WorkspaceCanImportPack}" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
                   <Button Content="{DynamicResource Text.Delete}" Click="ChangeWorkspaceContent" Tag="remove" Classes="danger" IsEnabled="{Binding HasWorkspaceContentSelection}" Margin="0,0,8,4"/>
                 </WrapPanel>
                 <ListBox Grid.Row="2" Name="WorkspaceContentList" ItemsSource="{Binding WorkspaceContentRows}" SelectedItem="{Binding WorkspaceContentSelection}">
@@ -135,27 +193,30 @@
                 <Button Content="{DynamicResource Text.ProfileJavaRetry}" Click="AutoJava" IsVisible="{Binding CanRetryJava}" IsEnabled="{Binding IsIdle}"/>
                 <TextBlock Text="{Binding Readiness}" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding WorkingSummary}" TextWrapping="Wrap"/>
+                <TextBlock Text="{DynamicResource Text.GameInstallationChecking}" IsVisible="{Binding GameInstallationChecking}" Classes="secondary"/>
                 <WrapPanel>
-                  <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" Margin="0,0,8,8"/>
+                  <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" IsVisible="{Binding HomeShowsPlay}" Classes="primary" Margin="0,0,8,8"/>
+                  <Button Content="{DynamicResource Text.HomeInstall}" Command="{Binding InstallCommand}" IsVisible="{Binding HomeShowsInstall}" IsEnabled="{Binding CanInstallGame}" Classes="primary" Margin="0,0,8,8"/>
+                  <Button Content="{DynamicResource Text.HomeRepair}" Command="{Binding InstallCommand}" IsVisible="{Binding HomeShowsRepair}" IsEnabled="{Binding CanInstallGame}" Classes="primary" Margin="0,0,8,8"/>
                   <Button Content="{DynamicResource Text.ReadyCheck}" Command="{Binding CheckCommand}" Margin="0,0,8,8"/>
                   <Button Name="ExportProfilePackButton" Content="{DynamicResource Text.ExportPack}" Click="ExportProfilePack" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
                   <Button Name="MarkWorkingButton" Content="{DynamicResource Text.WorkingMark}" Click="MarkWorking" IsEnabled="{Binding CanMarkWorking}" Margin="0,0,8,8"/>
                   <Button Name="ReviewWorkingButton" Content="{DynamicResource Text.WorkingReview}" Click="ReviewWorking" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
+                  <Button Name="ProfileOrganizationButton" Content="{DynamicResource Text.ProfileOrganization}" Click="EditOrganization" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
+                  <Button Name="ProfileScreenshotsButton" Content="{DynamicResource Text.ProfileScreenshots}" Click="ShowScreenshots" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/>
                 </WrapPanel>
               </StackPanel></Border></ScrollViewer>
               <ScrollViewer IsVisible="{Binding WorkspaceVersions}"><Border Classes="card"><StackPanel Spacing="10">
                 <TextBlock Text="{Binding WorkspaceVersion}" TextWrapping="Wrap"/>
-                <WrapPanel><Button Content="{DynamicResource Text.EditProfile}" Click="EditWorkspaceSettings" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/><Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstallGame}" Margin="0,0,8,8"/></WrapPanel>
+                <WrapPanel><Button Content="{DynamicResource Text.EditProfile}" Click="EditWorkspaceSettings" IsEnabled="{Binding IsIdle}" Margin="0,0,8,8"/></WrapPanel>
               </StackPanel></Border></ScrollViewer>
               <ScrollViewer IsVisible="{Binding WorkspaceSettings}">
                 <Border Classes="card" VerticalAlignment="Top">
                   <WrapPanel>
                     <Button Content="{DynamicResource Text.EditProfile}" Click="EditWorkspaceSettings" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
-                    <Button Name="OrganizeProfileName" Content="{DynamicResource Text.ProfileNamesOrganize}" Click="MoveWorkspaceFolder" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
+                    <Button Name="OrganizeProfileName" Content="{DynamicResource Text.ProfileNamesOrganize}" Click="ReviewProfileNames" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
                     <Button Content="{DynamicResource Text.ProfileFolderRestore}" Click="MoveWorkspaceFolder" Tag="restore" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
                     <Button Content="{DynamicResource Text.ProfileFileRestore}" Click="RenameWorkspaceFile" Tag="restore" IsEnabled="{Binding IsIdle}" Margin="0,0,10,8"/>
-                    <Button Content="{DynamicResource Text.Play}" Command="{Binding LaunchCommand}" Classes="primary" Margin="0,0,10,8"/>
-                    <Button Content="{DynamicResource Text.InstallGame}" Command="{Binding InstallCommand}" IsEnabled="{Binding CanInstallGame}" Margin="0,0,10,8"/>
                   </WrapPanel>
                 </Border>
               </ScrollViewer>
@@ -207,20 +268,14 @@
                     <WrapPanel>
                       <Button Content="{DynamicResource Text.WorkspaceGameFolder}" Click="OpenWorkspaceFolder" Tag="game" Margin="0,0,8,8"/>
                       <Button Content="{DynamicResource Text.OpenModsFolder}" Click="OpenWorkspaceFolder" Tag="mods" Margin="0,0,8,8"/>
+                      <Button Content="{DynamicResource Text.ContentResourcePacks}" Click="OpenWorkspaceFolder" Tag="resourcepacks" Margin="0,0,8,8"/>
+                      <Button Content="{DynamicResource Text.ContentShaders}" Click="OpenWorkspaceFolder" Tag="shaderpacks" Margin="0,0,8,8"/>
                       <Button Content="{DynamicResource Text.WorkspaceLogsFolder}" Click="OpenWorkspaceFolder" Tag="logs" Margin="0,0,8,8"/>
                     </WrapPanel>
                     <TextBlock Text="{DynamicResource Text.WorkspaceNoLogs}" Classes="secondary" TextWrapping="Wrap"/>
                   </StackPanel>
                 </Border>
               </ScrollViewer>
-              <Border Classes="card" VerticalAlignment="Top">
-                <Border.IsVisible><MultiBinding Converter="{x:Static BoolConverters.And}"><Binding Path="WorkspaceMods"/><Binding Path="!CanManageMods"/></MultiBinding></Border.IsVisible>
-                <StackPanel Spacing="8">
-                  <TextBlock Text="{DynamicResource Text.WorkspaceVanilla}" TextWrapping="Wrap"/>
-                  <ListBox ItemsSource="{Binding WorkspaceInstalledMods}" IsVisible="{Binding WorkspaceInstalledMods.Count}" MaxHeight="160"/>
-                  <TextBlock IsVisible="{Binding !WorkspaceInstalledMods.Count}" Text="{DynamicResource Text.WorkspaceNoMods}" TextWrapping="Wrap"/>
-                </StackPanel>
-              </Border>
           <Grid Name="ProfileModDropZone" DragDrop.AllowDrop="True" IsVisible="{Binding WorkspaceModTableVisible}" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
             <WrapPanel>
               <Button Name="WorkspaceCatalogButton" Content="{DynamicResource Text.DownloadMods}" Click="OpenModCatalog" Classes="primary" Margin="0,0,8,6" IsEnabled="{Binding CanUseOnlineCatalog}"/>
@@ -230,7 +285,10 @@
               <Button Content="{DynamicResource Text.ModBaselineTitle}" Click="ReviewInstalledMods" IsEnabled="{Binding IsIdle}" Margin="0,0,8,6"/>
             </WrapPanel>
             <TextBox Grid.Row="1" Text="{Binding WorkspaceModQuery}" PlaceholderText="{DynamicResource Text.Search}"/>
-            <TextBlock Grid.Row="2" Text="{Binding ActiveMods}" Classes="secondary"/>
+            <StackPanel Grid.Row="2" Spacing="4">
+              <TextBlock Text="{Binding ActiveMods}" Classes="secondary"/>
+              <TextBlock Text="{DynamicResource Text.WorkspaceCompatibilityUnknown}" IsVisible="{Binding WorkspaceCompatibilityUnknown}" TextWrapping="Wrap" Classes="secondary"/>
+            </StackPanel>
             <Grid Grid.Row="3" RowDefinitions="Auto,*">
               <Grid ColumnDefinitions="72,2*,*,*" ColumnSpacing="8" Margin="10,0,10,5">
                 <TextBlock Text="{DynamicResource Text.ModState}"/><TextBlock Grid.Column="1" Text="{DynamicResource Text.Name}"/>
@@ -295,7 +353,139 @@
               </StackPanel>
             </DataTemplate></ListBox.ItemTemplate>
           </ListBox>
-          <Border IsVisible="{Binding IsServers}" Classes="card" VerticalAlignment="Top"><TextBlock Text="{DynamicResource Text.Pending}" TextWrapping="Wrap" Classes="secondary"/></Border>
+          <ScrollViewer IsVisible="{Binding IsServers}" HorizontalScrollBarVisibility="Disabled"><StackPanel Spacing="12">
+            <Border Classes="card"><StackPanel Spacing="10">
+              <TextBlock Text="{DynamicResource Text.ServerLocalVanilla}" FontSize="18" FontWeight="SemiBold"/>
+              <TextBlock Text="{DynamicResource Text.ServerLocalHint}" TextWrapping="Wrap" Classes="secondary"/>
+              <SelectableTextBlock Text="{Binding DataRoot}" TextWrapping="Wrap" Classes="secondary"/>
+              <TextBlock Text="{Binding ServerListStatus}" IsVisible="{Binding HasServerListStatus}" TextWrapping="Wrap"/>
+              <ItemsControl Name="LocalServerCards" ItemsSource="{Binding ServerCards}">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="8" LineSpacing="8"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate><DataTemplate>
+                  <Button Click="OpenServerCard" Width="225" MinHeight="116" HorizontalContentAlignment="Stretch" Padding="12">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding Server.Name}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding Server.Version, StringFormat='Minecraft {0}'}"/>
+                      <TextBlock Text="{Binding CoreLabel}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Server.Address}"/>
+                      <TextBlock Text="{Binding State}" Classes="secondary" TextWrapping="Wrap"/>
+                    </StackPanel>
+                  </Button>
+                </DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <WrapPanel ItemSpacing="8" LineSpacing="8">
+                <Button Content="{DynamicResource Text.AternosTitle}" Click="OpenAternosChecklist" IsEnabled="{Binding CanEditServer}"/>
+                <Button Name="OpenLocalServerEulaButton" Content="{DynamicResource Text.ServerEula}" Click="OpenServerEula" IsVisible="{Binding ShowServerEula}"/>
+                <Button Name="AcceptLocalServerEulaButton" Content="{DynamicResource Text.ServerAcceptEula}" Click="AcceptServerEula"
+                        IsVisible="{Binding ShowServerEula}" IsEnabled="{Binding CanEditServer}"/>
+              </WrapPanel>
+              <TextBlock Text="{Binding ServerStatus}" TextWrapping="Wrap"/>
+            </StackPanel></Border>
+            <Border Name="ServerCreationForm" Classes="card"><StackPanel Spacing="10">
+              <StackPanel.Styles>
+                <Style Selector=":is(TemplatedControl).serverField">
+                  <Setter Property="Height" Value="40"/>
+                  <Setter Property="VerticalAlignment" Value="Stretch"/>
+                </Style>
+                <Style Selector=":is(ContentControl).serverField">
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+                <Style Selector="TextBox.serverField">
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+                <Style Selector="RadioButton.serverMode">
+                  <Setter Property="Height" Value="40"/>
+                  <Setter Property="Padding" Value="12,0"/>
+                  <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                  <Setter Property="Template">
+                    <ControlTemplate>
+                      <Border Name="ServerModeOutline" Padding="{TemplateBinding Padding}" CornerRadius="5"
+                              Background="{DynamicResource ActionBrush}" BorderBrush="{DynamicResource ActionBorderBrush}" BorderThickness="1">
+                        <Grid ColumnDefinitions="16,*" ColumnSpacing="8" VerticalAlignment="Center">
+                          <Ellipse Width="16" Height="16" Stroke="{DynamicResource SecondaryBrush}" StrokeThickness="1.5"/>
+                          <Ellipse Name="ServerModeMark" Width="8" Height="8" Fill="{DynamicResource ActionPrimaryBrush}" IsVisible="False"/>
+                          <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                                            VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+                        </Grid>
+                      </Border>
+                    </ControlTemplate>
+                  </Setter>
+                </Style>
+                <Style Selector="RadioButton.serverMode:checked /template/ Ellipse#ServerModeMark">
+                  <Setter Property="IsVisible" Value="True"/>
+                </Style>
+                <Style Selector="RadioButton.serverMode:checked /template/ Border#ServerModeOutline, RadioButton.serverMode:focus-visible /template/ Border#ServerModeOutline">
+                  <Setter Property="BorderBrush" Value="{DynamicResource ActionFocusBrush}"/>
+                </Style>
+                <Style Selector="RadioButton.serverMode:pointerover /template/ Border#ServerModeOutline">
+                  <Setter Property="Background" Value="{DynamicResource ActionHoverBrush}"/>
+                </Style>
+              </StackPanel.Styles>
+              <TextBlock Text="{DynamicResource Text.ServerCreate}" FontSize="18" FontWeight="SemiBold"/>
+              <Grid ColumnDefinitions="170,170" ColumnSpacing="8" IsEnabled="{Binding CanEditServer}">
+                <RadioButton Name="ServerFromScratchButton" GroupName="ServerCreation" Content="{DynamicResource Text.ServerFromScratch}"
+                             IsChecked="{Binding !ServerFromProfile, Mode=OneWay}" Click="ServerFromScratch" Classes="serverMode"/>
+                <RadioButton Name="ServerFromProfileButton" Grid.Column="1" GroupName="ServerCreation" Content="{DynamicResource Text.ServerFromProfile}"
+                             IsChecked="{Binding ServerFromProfile, Mode=OneWay}" Click="ServerFromProfile" Classes="serverMode"/>
+              </Grid>
+              <StackPanel IsVisible="{Binding !ServerFromProfile}" Spacing="6">
+                <WrapPanel IsEnabled="{Binding CanEditServer}" ItemSpacing="8" LineSpacing="8">
+                  <StackPanel Spacing="4" Width="162">
+                    <TextBlock Text="{DynamicResource Text.ServerCoreLabel}"/>
+                    <ComboBox Name="ServerCorePicker" ItemsSource="{Binding ServerCores}" SelectedItem="{Binding NewServerCore, Mode=TwoWay}"
+                              SelectionChanged="ServerCoreChanged" Classes="serverField" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="{DynamicResource Text.ServerCoreLabel}">
+                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Core}" ToolTip.Tip="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Spacing="4" Width="154">
+                    <TextBlock Text="{DynamicResource Text.Version}"/>
+                    <ComboBox Name="ServerMinecraftVersionPicker" ItemsSource="{Binding ServerVersions}" SelectedItem="{Binding NewServerVersion, Mode=TwoWay}"
+                              SelectionChanged="ServerVersionChanged" IsEnabled="{Binding HasServerVersions}" Classes="serverField" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="{DynamicResource Text.Version}" PlaceholderText="{DynamicResource Text.Version}">
+                      <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Spacing="4" Width="135" IsVisible="{Binding ShowServerBuilds}">
+                    <TextBlock Text="{DynamicResource Text.ServerBuild}"/>
+                    <ComboBox Name="ServerCoreBuildPicker" ItemsSource="{Binding ServerBuilds}" SelectedItem="{Binding NewServerBuild, Mode=TwoWay}"
+                              IsEnabled="{Binding HasServerBuilds}" Classes="serverField" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="{DynamicResource Text.ServerBuild}" PlaceholderText="{DynamicResource Text.ServerBuild}"/>
+                  </StackPanel>
+                  <Button Name="RefreshServerCatalogButton" Content="{DynamicResource Text.RefreshCatalog}" Click="RefreshServerVersions"
+                          IsEnabled="{Binding !Offline}" Classes="serverField" VerticalAlignment="Bottom"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding ServerCatalogStatus}" IsVisible="{Binding HasServerCatalogStatus}" TextWrapping="Wrap" Classes="secondary"/>
+              </StackPanel>
+              <WrapPanel IsVisible="{Binding ServerFromProfile}" IsEnabled="{Binding CanEditServer}" ItemSpacing="8" LineSpacing="8">
+                <ComboBox Name="ServerSourceProfilePicker" ItemsSource="{Binding Profiles}" SelectedItem="{Binding ServerSourceProfile, Mode=TwoWay}" SelectionChanged="ServerProfileChanged"
+                          PlaceholderText="{DynamicResource Text.Profile}" Width="250" Classes="serverField">
+                  <ComboBox.ItemTemplate><DataTemplate><TextBlock TextTrimming="CharacterEllipsis"><Run Text="{Binding Name}"/><Run Text=" · "/><Run Text="{Binding Summary}"/></TextBlock></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+                <ComboBox ItemsSource="{Binding ServerWorlds}" SelectedItem="{Binding ServerWorld, Mode=TwoWay}" Width="180" Classes="serverField">
+                  <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+              </WrapPanel>
+              <WrapPanel IsEnabled="{Binding CanEditServer}" ItemSpacing="8" LineSpacing="8">
+                <StackPanel Spacing="4"><TextBlock Text="{DynamicResource Text.Name}"/>
+                  <TextBox Name="NewServerNameInput" Text="{Binding NewServerName}" MaxLength="80" Width="190" Classes="serverField"/>
+                </StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text="{DynamicResource Text.ServerPort}"/>
+                  <TextBox Text="{Binding NewServerPort}" AutomationProperties.Name="{DynamicResource Text.ServerPort}" MaxLength="5" Width="100" Classes="serverField"/>
+                </StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text="{DynamicResource Text.ServerMemory}"/>
+                  <TextBox Name="NewServerMemoryInput" Text="{Binding NewServerMemory}" AutomationProperties.Name="{DynamicResource Text.ServerMemory}" MaxLength="10" Width="125" Classes="serverField"/>
+                </StackPanel>
+                <StackPanel Spacing="4"><TextBlock Text=" " IsHitTestVisible="False"/>
+                  <Button Name="CreateLocalServerButton" Content="{DynamicResource Text.ServerCreate}" Click="CreateServer"
+                          IsEnabled="{Binding CanCreateServer}" Classes="primary serverField"/>
+                </StackPanel>
+              </WrapPanel>
+              <CheckBox Content="{DynamicResource Text.ServerWhitelist}" IsChecked="{Binding NewServerPrivate}"
+                        IsEnabled="{Binding CanEditServer}"/>
+              <TextBlock Text="{DynamicResource Text.ServerPrivateHint}" IsVisible="{Binding NewServerPrivate}" TextWrapping="Wrap" Classes="secondary"/>
+            </StackPanel></Border>
+          </StackPanel></ScrollViewer>
           <TabControl Name="SettingsTabs" IsVisible="{Binding IsSettings}" TabStripPlacement="Left" SelectionChanged="SettingsTabChanged">
             <TabControl.ItemsPanel><ItemsPanelTemplate><StackPanel Spacing="2"/></ItemsPanelTemplate></TabControl.ItemsPanel>
             <TabControl.Styles>
@@ -328,12 +518,13 @@
                 </StackPanel>
               </StackPanel></Border>
               <Border Classes="card"><StackPanel Spacing="12"><TextBlock Text="{DynamicResource Text.AiTitle}" FontSize="17" FontWeight="SemiBold"/><CheckBox Name="AiToggle" Content="{DynamicResource Text.AiEnable}" IsChecked="{Binding AiEnabled}" IsCheckedChanged="AiChanged"/><TextBlock Text="{DynamicResource Text.AiHint}" Classes="secondary" TextWrapping="Wrap"/></StackPanel></Border>
-              <Border Classes="card"><StackPanel Spacing="10"><TextBlock Text="{DynamicResource Text.Data}" FontSize="16"/><TextBlock Text="{Binding DataRoot}" Classes="secondary" TextWrapping="Wrap"/></StackPanel></Border>
+              <Border Classes="card"><StackPanel Spacing="10"><TextBlock Text="{DynamicResource Text.Data}" FontSize="16"/><TextBlock Text="{Binding DataRoot}" Classes="secondary" TextWrapping="Wrap"/><Button Name="StorageUsageButton" Content="{DynamicResource Text.StorageUsage}" Click="ShowStorageUsage" IsEnabled="{Binding IsIdle}"/></StackPanel></Border>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Header="{DynamicResource Text.Account}"><ScrollViewer><StackPanel Spacing="16" Margin="0,18,0,0"><Border Classes="card"><StackPanel Spacing="14"><Button Name="AccountSignInButton" Content="{DynamicResource Text.PerformSignIn}" Command="{Binding SignInCommand}" IsEnabled="{Binding IsIdle}" IsVisible="{Binding NeedsSignIn}" Classes="primary" HorizontalAlignment="Left"/><TextBlock Text="{Binding Account}" IsVisible="{Binding HasAccount}" FontSize="20"/><TextBlock Text="{Binding AccountUuid}" Classes="secondary"/><ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}" SelectionChanged="AccountChanged" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/><Image Source="{Binding AccountSkin}" Width="96" Height="96" HorizontalAlignment="Left"/><TextBlock Text="{DynamicResource Text.AccountHint}" TextWrapping="Wrap" Classes="secondary"/><TextBlock Text="{DynamicResource Text.ClientId}" Classes="label"/><TextBox Text="{Binding ClientId}"/><WrapPanel><Button Content="{DynamicResource Text.Save}" Command="{Binding SaveSettingsCommand}" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.SignIn}" Command="{Binding SignInCommand}" IsVisible="{Binding HasAccount}" Classes="primary" Margin="0,0,10,8"/><Button Content="{DynamicResource Text.SignOut}" Command="{Binding SignOutCommand}" Margin="0,0,0,8"/></WrapPanel></StackPanel></Border></StackPanel></ScrollViewer></TabItem>
             <TabItem Name="AiConnectionTab" Header="{DynamicResource Text.AiUxConnection}"><ScrollViewer><StackPanel Spacing="12" Margin="0,18,0,0">
               <Border Classes="card"><StackPanel Spacing="10">
                 <TextBlock Text="{DynamicResource Text.AiUxConnection}" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock Name="AiConnectionDevelopmentLabel" Text="{DynamicResource Text.AiInDevelopment}" FontWeight="SemiBold" Classes="secondary"/>
                 <CheckBox Content="{DynamicResource Text.AiEnabled}" IsChecked="{Binding AiEnabled}" Click="AiChanged"/>
                 <TextBlock Name="AiConnectionState" Text="{Binding AiConnectionState}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                 <TextBlock Name="AiSavedKeyState" Text="{Binding AiKeyState}"/>
@@ -349,6 +540,7 @@
               </StackPanel></Border>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Name="AiAssistantTab" Header="{DynamicResource Text.AiAssistant}" IsVisible="{Binding AiEnabled}"><ScrollViewer><StackPanel Spacing="6" Margin="0,8,0,0">
+              <TextBlock Name="AiAssistantDevelopmentLabel" Text="{DynamicResource Text.AiInDevelopment}" FontWeight="SemiBold" Classes="secondary"/>
               <CheckBox Name="AiLogMode" Content="{DynamicResource Text.AiUxLogMode}" IsChecked="{Binding AiLogMode, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"/>
               <TextBlock Text="{DynamicResource Text.AiUxQuestion}" FontWeight="SemiBold"/><TextBox Name="AiQuestionInput" Text="{Binding AiInput, Mode=TwoWay}" PlaceholderText="{DynamicResource Text.AiUxWriteQuestion}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="220" MaxLength="16000" IsEnabled="{Binding IsIdle}"/>
               <CheckBox Name="AiRequestConsent" IsChecked="{Binding AiConsent, Mode=TwoWay}" IsEnabled="{Binding IsIdle}"><TextBlock Text="{DynamicResource Text.AiConsent}" TextWrapping="Wrap"/></CheckBox>
@@ -362,6 +554,7 @@
               <WrapPanel IsVisible="{Binding AiChatEmpty}"><Button Content="{DynamicResource Text.AiUxExampleOne}" Click="AiExampleOne" Margin="0,0,8,6"/><Button Content="{DynamicResource Text.AiUxExampleTwo}" Click="AiExampleTwo"/></WrapPanel>
             </StackPanel></ScrollViewer></TabItem>
             <TabItem Name="MyTranslationsTab" Header="{DynamicResource Text.AiUxLibrary}"><ScrollViewer><StackPanel Spacing="12" Margin="0,18,0,0">
+              <TextBlock Name="TranslationsDevelopmentLabel" Text="{DynamicResource Text.AiInDevelopment}" FontWeight="SemiBold" Classes="secondary"/>
               <TextBlock Text="{DynamicResource Text.AiUxProfile}"/><ComboBox Name="TranslationProfile" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" SelectionChanged="TranslationProfileChanged" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch"/>
               <Expander Header="{DynamicResource Text.AiUxLocalProfile}" HorizontalContentAlignment="Stretch"><StackPanel Spacing="6" IsEnabled="{Binding IsIdle}">
                 <TextBlock Text="{DynamicResource Text.AiUxLocalProfileHint}" TextWrapping="Wrap"/><TextBlock Text="{DynamicResource Text.PackName}"/><TextBox Name="TranslationProfileName" Text="{Binding TranslationProfileName, Mode=TwoWay}" MaxLength="80"/>

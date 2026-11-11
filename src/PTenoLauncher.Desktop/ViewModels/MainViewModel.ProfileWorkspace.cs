@@ -25,6 +25,16 @@ public sealed partial class MainViewModel
     public bool WorkspaceSettings => IsProfileWorkspace && WorkspaceSection == ProfileSection.Settings;
     public bool WorkspaceOverview => IsProfileWorkspace && WorkspaceSection == ProfileSection.Overview;
     public bool WorkspaceVersions => IsProfileWorkspace && WorkspaceSection == ProfileSection.Versions;
+    public bool WorkspaceHasModsSection => CanManageMods;
+    public bool WorkspaceHasShadersSection => ProfileContentCompatibility.Shaders(SelectedProfile) != ContentSupport.Unsupported;
+    public bool WorkspaceHasResourcePacksSection => ProfileContentCompatibility.ResourcePacks(SelectedProfile) != ContentSupport.Unsupported;
+    public bool WorkspacePackCatalogOffline => WorkspaceCanImportPack && Offline;
+    public bool WorkspaceCompatibilityUnknown => WorkspaceSection switch
+    {
+        ProfileSection.Mods => ProfileContentCompatibility.Mods(SelectedProfile) == ContentSupport.Unknown,
+        ProfileSection.ResourcePacks => ProfileContentCompatibility.ResourcePacks(SelectedProfile) == ContentSupport.Unknown,
+        _ => false
+    };
     public bool WorkspaceMods => IsProfileWorkspace && WorkspaceSection == ProfileSection.Mods;
     public bool WorkspaceModTableVisible => WorkspaceMods && CanManageMods;
     public bool CanUseOnlineCatalog => IsIdle && !Offline && CanManageMods;
@@ -69,6 +79,7 @@ public sealed partial class MainViewModel
         }
         var rows = new List<WorkspaceModRow>(entries.Length);
         string? shader = null;
+        var complete = entries.Length < 1000;
         var inspected = 0;
         foreach (var file in entries)
         {
@@ -89,11 +100,12 @@ public sealed partial class MainViewModel
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or
                     InvalidOperationException or System.Text.Json.JsonException)
-                { services.Log.Error("workspace.mod.metadata", error); }
+                { services.Log.Error("workspace.mod.metadata", error); complete = false; }
             }
+            else if (!disabled) complete = false;
             rows.Add(row);
         }
-        return new(rows.ToArray(), [], shader ?? unknownShader);
+        return new(rows.ToArray(), [], shader ?? unknownShader, shader is not null, complete);
     }
     public string WorkspaceGamePath => WorkspaceProfileId is { } id ? services.Paths.Game(id) : "";
     public string WorkspaceProfilePath => WorkspaceProfileId is { } id ? services.Paths.Profile(id) : "";
@@ -158,16 +170,31 @@ public sealed partial class MainViewModel
     public void ChooseWorkspaceSection(ProfileSection section)
     {
         if (WorkspaceProfileId is null) return;
-        WorkspaceSection = section;
+        WorkspaceSection = CanShowWorkspaceSection(section) ? section : ProfileSection.Overview;
     }
+
+    private bool CanShowWorkspaceSection(ProfileSection section) => section switch
+    {
+        ProfileSection.Mods => WorkspaceHasModsSection,
+        ProfileSection.Shaders => WorkspaceHasShadersSection,
+        ProfileSection.ResourcePacks => WorkspaceHasResourcePacksSection,
+        _ => true
+    };
 
     private void RefreshWorkspaceView()
     {
+        if (IsProfileWorkspace && !CanShowWorkspaceSection(WorkspaceSection))
+        {
+            WorkspaceSection = ProfileSection.Overview;
+            return;
+        }
         foreach (var name in new[] { nameof(IsProfileWorkspace), nameof(WorkspaceSettings),
             nameof(WorkspaceOverview), nameof(WorkspaceVersions), nameof(WorkspaceMods), nameof(WorkspaceConsole), nameof(WorkspaceFolders), nameof(WorkspaceModTableVisible),
             nameof(WorkspaceGamePath), nameof(WorkspaceProfilePath), nameof(WorkspaceVersion), nameof(PageTitle),
             nameof(WorkspaceResourcePacks), nameof(WorkspaceShaders), nameof(WorkspaceWorlds), nameof(WorkspaceContentVisible),
-            nameof(WorkspaceContentHint), nameof(WorkspaceCanImportPack) })
+            nameof(WorkspaceContentHint), nameof(WorkspaceCanImportPack), nameof(WorkspaceFindShaderComponent), nameof(WorkspacePackStatus),
+            nameof(WorkspaceHasModsSection), nameof(WorkspaceHasShadersSection), nameof(WorkspaceHasResourcePacksSection),
+            nameof(WorkspacePackCatalogOffline), nameof(WorkspaceCompatibilityUnknown) })
             Changed(name);
         PresentWorkspaceCache();
         Changed(nameof(CanMarkWorking));
@@ -181,6 +208,8 @@ public sealed partial class MainViewModel
         {
             "game" => services.Paths.Game(id),
             "mods" => SafePath.Join(services.Paths.Game(id), "mods"),
+            "shaderpacks" => SafePath.Join(services.Paths.Game(id), "shaderpacks"),
+            "resourcepacks" => SafePath.Join(services.Paths.Game(id), "resourcepacks"),
             "logs" => SafePath.Join(services.Paths.Profile(id), "launcher-logs"),
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };

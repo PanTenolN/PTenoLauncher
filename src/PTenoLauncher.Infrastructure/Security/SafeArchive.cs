@@ -25,11 +25,12 @@ public static class SafeArchive
         }
     }
     // Extract to a fresh staging directory. Caller commits or removes the staging directory.
-    public static async Task ExtractAsync(string source, string destination, CancellationToken ct = default)
+    public static async Task ExtractAsync(string source, string destination, CancellationToken ct = default,
+        long maxExpanded = 1024L * 1024 * 1024)
     {
         if (Directory.Exists(destination)) throw new IOException("Для розпакування потрібна нова директорія.");
         using var archive = ZipFile.OpenRead(source);
-        Validate(archive, destination); Directory.CreateDirectory(destination);
+        Validate(archive, destination, maxExpanded); Directory.CreateDirectory(destination);
         try
         {
             foreach (var entry in archive.Entries)

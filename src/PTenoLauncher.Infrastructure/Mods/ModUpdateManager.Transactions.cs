@@ -9,7 +9,18 @@ namespace PTenoLauncher.Infrastructure.Mods;
 
 public sealed partial class ModUpdateManager
 {
-    private string BackupPath(Guid profile, Guid op) => SafePath.Join(paths.Backups, $"{profile:N}-mods-{op:N}.zip");
+    private static string BackupStem(ModUpdatePlan plan) => ReadableName.Stem(plan.Before.Profile.Name, "Profile", 64) + $" — Mods — {plan.At:yyyy-MM-dd}";
+    private string BackupPath(ModUpdateOperation operation) => SafePath.Join(paths.Root, operation.Backup);
+
+    private static bool ValidBackupName(ModUpdateOperation operation)
+    {
+        var plan = operation.Plan;
+        if (operation.Backup == $"backups/{plan.ProfileId:N}-mods-{plan.Id:N}.zip") return true;
+        var prefix = "backups/" + BackupStem(plan);
+        if (operation.Backup == prefix + ".zip") return true;
+        return operation.Backup.StartsWith(prefix + "-", StringComparison.Ordinal) && operation.Backup.EndsWith(".zip", StringComparison.Ordinal) &&
+            int.TryParse(operation.Backup.AsSpan(prefix.Length + 1, operation.Backup.Length - prefix.Length - 5), out var suffix) && suffix is >= 2 and <= 2048;
+    }
     private string Stage(ModUpdatePlan plan, string area, string relative) => SafePath.Join(OperationRoot(plan.ProfileId, plan.Id), area + "/" + relative);
     private static bool Same<T>(T a, T b) => JsonSerializer.Serialize(a, AtomicFile.JsonOptions) == JsonSerializer.Serialize(b, AtomicFile.JsonOptions);
     private void ValidateState(Guid id, ModSetState s, bool working = false, bool prior = false)
@@ -73,15 +84,13 @@ public sealed partial class ModUpdateManager
     private void ValidateOperation(GameProfile p, ModUpdateOperation op)
     {
         ValidatePlan(p, op.Plan);
-        if (op.Schema != 1 || op.State is not ("Prepared" or "Committed" or "Recovered") || op.Backup != Path.GetRelativePath(paths.Root, BackupPath(p.Id, op.Plan.Id)).Replace('\\', '/') ||
+        if (op.Schema != 1 || op.State is not ("Prepared" or "Committed" or "Recovered") || !ValidBackupName(op) ||
             op.BackupSha256.Length != 64 || !op.BackupSha256.All(Uri.IsHexDigit)) throw Error("UpdatesIntegrity");
     }
-    private async Task<string> CreateBackup(ModUpdatePlan plan, CancellationToken ct)
+    private async Task<(string Path, string Hash)> CreateBackup(ModUpdatePlan plan, CancellationToken ct)
     {
-        var file = BackupPath(plan.ProfileId, plan.Id); SafePath.RejectLinks(file);
         Directory.CreateDirectory(paths.Backups);
-        // A unique file is never overwritten, even after a failed attempt. No user data is cleaned up implicitly.
-        if (File.Exists(file)) throw Error("UpdatesRecovery", file);
+        var file = ReadableName.Free(paths.Backups, BackupStem(plan), ".zip");
         await using (var output = new FileStream(file, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.WriteThrough))
         {
             using (var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -100,11 +109,11 @@ public sealed partial class ModUpdateManager
             await output.FlushAsync(ct); output.Flush(true);
         }
         await using var s = File.OpenRead(file);
-        return Convert.ToHexString(await SHA256.HashDataAsync(s, ct)).ToLowerInvariant();
+        return (Path.GetRelativePath(paths.Root, file).Replace('\\', '/'), Convert.ToHexStringLower(await SHA256.HashDataAsync(s, ct)));
     }
     private async Task VerifyBackup(ModUpdateOperation op, CancellationToken ct)
     {
-        var file = BackupPath(op.Plan.ProfileId, op.Plan.Id);
+        var file = BackupPath(op);
         if (!File.Exists(file) || !await VerifiedDownloader.VerifyAsync(file, op.BackupSha256, "SHA256", new FileInfo(file).Length, ct)) throw Error("UpdatesBackup");
         using var zip = ZipFile.OpenRead(file);
         var expected = op.Plan.Before.Files;
@@ -137,7 +146,7 @@ public sealed partial class ModUpdateManager
     {
         SafePath.RejectLinks(target); Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         if (File.Exists(target)) { if (await FileState(target, f.Path, ct) != f) throw Error("UpdatesIntegrity", target); return; }
-        using var zip = ZipFile.OpenRead(BackupPath(op.Plan.ProfileId, op.Plan.Id));
+        using var zip = ZipFile.OpenRead(BackupPath(op));
         await using var input = zip.GetEntry(f.Path)!.Open();
         // AtomicFile avoids leaving a partial JAR in the profile if extraction is interrupted.
         var temporary = Stage(op.Plan, "restore", f.Path + ".pending-" + Guid.NewGuid().ToString("N"));
@@ -183,7 +192,7 @@ public sealed partial class ModUpdateManager
         {
             var snapshot = await ReadWorkingAsync(p.Id, ct);
             if (snapshot is null || snapshot.Id != plan.Reverts || !Same(snapshot.Receipt, ParseWorkingReceipt(plan.After.Receipt)) ||
-                !snapshot.Mods.Select(mod => mod.File).SequenceEqual(plan.After.Files) ||
+                !WorkingNames(snapshot, plan.Before).Select(mod => mod.Target).SequenceEqual(plan.After.Files) ||
                 await QuiltOverridesHash(p.Id, ct) != snapshot.QuiltOverridesHash) throw Error("UpdatesStale");
             var missing = await MissingWorkingGameFiles(p.Id, snapshot.Receipt, ct);
             if (missing.Count != 0) throw Error("WorkingGameMissing", string.Join(Environment.NewLine, missing));
@@ -214,7 +223,8 @@ public sealed partial class ModUpdateManager
             if (blockers.Count > 0) throw Error("UpdatesCompatibility", string.Join(Environment.NewLine, blockers));
         }
         if (Fingerprint(await Capture(p, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");
-        var op = new ModUpdateOperation(plan, "Prepared", Path.GetRelativePath(paths.Root, BackupPath(p.Id, plan.Id)).Replace('\\', '/'), await CreateBackup(plan, ct));
+        var backup = await CreateBackup(plan, ct);
+        var op = new ModUpdateOperation(plan, "Prepared", backup.Path, backup.Hash);
         await VerifyBackup(op, ct);
         await store.RegisterArtifactAsync(new(p.Id, op.Backup, "backup"), ct);
         if (Fingerprint(await Capture(p, ct, partial: working, working: working)) != Fingerprint(plan.Before)) throw Error("UpdatesStale");

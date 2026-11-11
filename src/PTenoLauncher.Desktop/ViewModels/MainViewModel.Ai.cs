@@ -258,6 +258,8 @@ public sealed partial class MainViewModel
         var format = string.IsNullOrWhiteSpace(AiPackFormat) ? (await TranslationPackMetadataResolver.ResolveAsync(services.Paths, profile, ct)).Format : int.TryParse(AiPackFormat, out var manual) ? manual : throw new AiServiceException("AiUxPackUnknown");
         try { lastTranslationPack = await services.Translations.ExportAsync(profile, d.Locale, format, ct, d.SourceLocale); }
         catch(IOException error) { services.Log.Error("translation.pack",error);throw new AiServiceException("AiUxPackConflict"); }
+        await ReloadWorkspaceContentAsync(profile.Id, PTenoLauncher.Infrastructure.Minecraft.ProfileContentKind.ResourcePacks,
+            Path.GetFileName(lastTranslationPack.Path));
         Changed(nameof(TranslationPackPath)); Changed(nameof(TranslationPackResult)); Status = TranslationPackResult;
     });
     public string TranslationFolder => SafePath.Join(services.Paths.Profile(RequireProfile().Id), "translations");

@@ -4,6 +4,9 @@ public static partial class TextCatalog
 {
     private static void RegisterContentTexts()
     {
+        Texts["ProfileNameInUse"] = ("Закрийте гру або програму, яка використовує цей файл.", "Close the game or application using this file.");
+        Texts["ProfileNameNone"] = ("Старих технічних назв не знайдено.", "No old technical names found.");
+        Texts["ProfileNameApply"] = ("Застосувати вибрану назву", "Apply selected name");
         Texts["ContentCartHttpFailed"] = ("Сервер повернув HTTP {0}. Можна повторити.", "The server returned HTTP {0}. You can retry.");
         Texts["ContentCartNetworkFailed"] = ("Не вдалося завантажити файл через мережу. Можна повторити.", "The file could not be downloaded. You can retry.");
         Texts["ContentCartInstall"] = ("Встановити пакети", "Install packs");

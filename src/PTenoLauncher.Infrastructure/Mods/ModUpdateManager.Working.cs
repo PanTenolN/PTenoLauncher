@@ -170,6 +170,35 @@ public sealed partial class ModUpdateManager
         return missing;
     }
 
+    private IReadOnlyList<(WorkingMod Original, ModFileState Target)> WorkingNames(WorkingConfiguration snapshot, ModSetState before)
+    {
+        var pins = ReadPins(before).Pins.Select(pin => pin.File.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        static bool Technical(ModFileState file)
+        {
+            var name = Path.GetFileName(file.Path);
+            if (IsDisabled(name)) name = name[..^".disabled".Length];
+            return ReadableName.StripDigest(Path.GetFileNameWithoutExtension(name), file.Sha256, file.Sha512) is not null;
+        }
+        var reserved = snapshot.Mods.Where(mod => pins.Contains(mod.File.Path) || !Technical(mod.File))
+            .Select(mod => mod.File.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var result = new List<(WorkingMod Original, ModFileState Target)>();
+        foreach (var mod in snapshot.Mods)
+        {
+            var file = mod.File;
+            if (!pins.Contains(file.Path) && Technical(file))
+            {
+                var fallback = (mod.Id ?? "Mod") + (mod.Version is null ? "" : "-" + mod.Version);
+                var leaf = Path.GetFileName(file.Path);
+                var friendly = "mods/" + LocalModManager.JarName(leaf, file.Sha256, file.Sha512, fallback);
+                var target = before.Files.Any(existing => existing == (file with { Path = friendly })) && reserved.Add(friendly)
+                    ? friendly : LocalModManager.ChooseInstallPath(paths.Game(snapshot.ProfileId), leaf, file.Sha256, reserved, fallback, file.Sha512);
+                file = file with { Path = target };
+            }
+            result.Add((mod, file));
+        }
+        return result.OrderBy(item => item.Target.Path, StringComparer.Ordinal).ToArray();
+    }
+
     public async Task<WorkingRestorePreview> PreviewWorkingAsync(GameProfile profile, CancellationToken ct = default)
     {
         using var lease = new ProfileUsage(paths).Acquire(profile.Id);
@@ -178,7 +207,8 @@ public sealed partial class ModUpdateManager
         var snapshot = await ReadWorkingAsync(profile.Id, ct) ?? throw Error("WorkingNone");
         var before = await Capture(profile, ct, partial: true, working: true);
         var prior = before.Files.ToDictionary(f => f.Path, StringComparer.OrdinalIgnoreCase);
-        var desired = snapshot.Mods.ToDictionary(m => m.File.Path, m => m.File, StringComparer.OrdinalIgnoreCase);
+        var named = WorkingNames(snapshot, before);
+        var desired = named.ToDictionary(m => m.Target.Path, m => m.Target, StringComparer.OrdinalIgnoreCase);
         var blockers = new List<string>();
         var missing = new List<WorkingMod>();
         var replaced = new List<WorkingMod>();
@@ -197,7 +227,7 @@ public sealed partial class ModUpdateManager
                 { blockers.Add("WorkingInvalidJar: " + old.Path); }
             }
             if (next is not null && ExactLocalFile(before, next) is null && !await HasWorkingBlob(next, ct))
-                missing.Add(snapshot.Mods.Single(m => m.File == next));
+                missing.Add(named.Single(m => m.Target == next).Original);
         }
         var target = WithWorkingTarget(profile, snapshot.Receipt);
         var missingGame = await MissingWorkingGameFiles(profile.Id, snapshot.Receipt, ct);
@@ -208,12 +238,12 @@ public sealed partial class ModUpdateManager
             if (!desired.TryGetValue(pin.File.Path, out var file) || file != pin.File) blockers.Add("UpdatesPinConflict: " + pin.File.Path);
         blockers.AddRange((await MrpackRequirements.CheckAsync(paths, target, snapshot.Receipt, ct)).Select(i => i.Message));
         var existing = before.Inventory is null ? null : JsonSerializer.Deserialize<InstalledModInventory>(before.Inventory, AtomicFile.JsonOptions);
-        var inventory = new InstalledModInventory(profile.Id, snapshot.Mods.Where(m => m.Enabled).Select(m =>
-            new InstalledModFile(m.File.Path, m.File.Sha256, m.File.Size,
-                existing?.Files.FirstOrDefault(f => f.Size == m.File.Size && f.Sha256.Equals(m.File.Sha256, StringComparison.OrdinalIgnoreCase))?.Origin)).ToArray());
+        var inventory = new InstalledModInventory(profile.Id, named.Where(m => m.Original.Enabled).Select(m =>
+            new InstalledModFile(m.Target.Path, m.Target.Sha256, m.Target.Size,
+                existing?.Files.FirstOrDefault(f => f.Size == m.Target.Size && f.Sha256.Equals(m.Target.Sha256, StringComparison.OrdinalIgnoreCase))?.Origin)).ToArray());
         var after = before with
         {
-            Profile = target, Files = snapshot.Mods.Select(m => m.File).ToArray(),
+            Profile = target, Files = named.Select(m => m.Target).ToArray(),
             Receipt = JsonSerializer.SerializeToUtf8Bytes(snapshot.Receipt, AtomicFile.JsonOptions),
             Inventory = JsonSerializer.SerializeToUtf8Bytes(inventory, AtomicFile.JsonOptions),
             Epoch = JsonSerializer.SerializeToUtf8Bytes(Guid.NewGuid(), AtomicFile.JsonOptions)

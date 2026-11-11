@@ -41,6 +41,8 @@ public sealed class SecurityAndModsTests
     {
         var redacted = LauncherLog.Redact("access_token=abc refresh_token=def password=\"private value\"");
         Assert.DoesNotContain("abc", redacted); Assert.DoesNotContain("def", redacted); Assert.DoesNotContain("private value", redacted);
+        var serverSecrets = LauncherLog.Redact("""Authorization: Bearer private-header {"accessToken":"private-json"} api-key='private-key' management-server-secret=private-management rcon.password=private-rcon""");
+        Assert.DoesNotContain("private-", serverSecrets);
     }
     [Theory]
     [InlineData("../escape.txt")][InlineData("C:/escape.txt")][InlineData("mods\\evil.jar")]

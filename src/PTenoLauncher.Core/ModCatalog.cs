@@ -1,6 +1,9 @@
 namespace PTenoLauncher.Core;
 
-public sealed record CatalogProject(string Id, string Slug, string Title, bool SupportsClient, string? LicenseId = null);
+public sealed record CatalogProject(string Id, string Slug, string Title, bool SupportsClient, string? LicenseId = null)
+{
+    public bool SupportsServer { get; init; } = true;
+}
 public sealed record CatalogSearchHit(string Id, string Slug, string Title, string Description, string? IconUrl = null)
 {
     public override string ToString() => Title;

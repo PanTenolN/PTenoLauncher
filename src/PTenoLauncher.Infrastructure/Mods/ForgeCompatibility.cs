@@ -4,7 +4,8 @@ namespace PTenoLauncher.Infrastructure.Mods;
 internal sealed record ForgeCompatibilityReport(IReadOnlyList<ReadinessIssue> Issues, IReadOnlyList<string> Warnings);
 internal static class ForgeCompatibility
 {
-    internal static ForgeCompatibilityReport Check(GameProfile profile, InstallationReceipt? receipt, IEnumerable<ModInspection> inspections)
+    internal static ForgeCompatibilityReport Check(GameProfile profile, InstallationReceipt? receipt, IEnumerable<ModInspection> inspections,
+        bool dedicatedServer = false)
     {
         var issues = new List<ReadinessIssue>(); var warnings = new List<string>();
         var active = inspections.Where(m => m.Loader == profile.Loader && m.ForgeMetadata is not null).ToArray();
@@ -47,11 +48,12 @@ internal static class ForgeCompatibility
                 issues.Add(new(languageMatch == ConstraintMatch.Unknown ? "mods.constraint.unknown" : "mods.runtime.version", file.FileName + ": FML " + languageVersion + " не підтверджує " + metadata.LanguageRange));
             foreach (var mod in metadata.Mods)
             {
+                var owner = dedicatedServer ? file.FileName + " · " + mod.Id : mod.Id;
                 foreach (var feature in mod.Features.Where(f => f.Key == "java"))
-                    CheckRange("java", feature.Value, "required", mod.Id);
-                foreach (var dependency in mod.Dependencies.Where(d => d.Side is "BOTH" or "CLIENT"))
+                    CheckRange("java", feature.Value, "required", owner);
+                foreach (var dependency in mod.Dependencies.Where(d => d.Side == "BOTH" || d.Side == (dedicatedServer ? "SERVER" : "CLIENT")))
                 {
-                    CheckRange(dependency.Id, dependency.Range, dependency.Kind, mod.Id);
+                    CheckRange(dependency.Id, dependency.Range, dependency.Kind, owner);
                     if (dependency.Kind is "required" or "optional" && graph.ContainsKey(dependency.Id) &&
                         versions.TryGetValue(dependency.Id, out var version) && MavenVersionConstraints.Match(version, dependency.Range) == ConstraintMatch.Match)
                     {

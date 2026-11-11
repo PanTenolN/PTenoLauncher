@@ -125,7 +125,8 @@ public sealed partial class RemoteModInstaller
     {
         var file = version.File;
         var destination = SafePath.Join(paths.Cache, "modrinth/files/" + file.Sha512 + "/" + file.Name);
-        await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
+        await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth,
+            displayName: title ?? version.Number);
         var inspection = await local.InspectAsync(destination, ct);
         return new(destination, inspection with { SourceStatus = "Modrinth" }, reason, title);
     }

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 namespace PTenoLauncher.Desktop.Localization;
 
 public sealed record UiLanguage(string Code, string Name) { public override string ToString() => Name; }
@@ -8,6 +9,7 @@ public static partial class TextCatalog
         new("pl", "Polski"), new("de", "Deutsch"), new("es", "Español"),
         new("fr", "Français"), new("pt-BR", "Português (Brasil)"), new("ru", "Русский")];
     public static string Language { get; private set; } = "uk";
+    private static ResourceDictionary? languageResources;
     private static readonly Dictionary<string,(string Uk,string En)> Texts = new()
     {
         ["DownloadVerifying"]=("{0} · {1} · Перевірка: {2}", "{0} · {1} · Verifying: {2}"),
@@ -108,6 +110,7 @@ public static partial class TextCatalog
     ["HomeRepair"]=("Відновити","Repair"),
     ["HomeOpenProfile"]=("Відкрити профіль","Open profile"),
     ["LibraryGrid"]=("Сітка","Grid"),
+    ["LibraryAllLoaders"]=("Усі завантажувачі","All loaders"),
         ["WorkspaceOverview"]=("Огляд","Overview"),
         ["WorkspaceVersions"]=("Версії","Versions"),
         ["Search"]=("Пошук","Search"),
@@ -163,8 +166,26 @@ public static partial class TextCatalog
     }
     public static void Apply(string language)
     {
-        Language = Languages.FirstOrDefault(item => string.Equals(item.Code, language, StringComparison.OrdinalIgnoreCase))?.Code ?? "uk";
-        if (Application.Current is not { } app) return;
-        foreach (var key in Texts.Keys) app.Resources["Text." + key] = Get(key);
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var next = Languages.FirstOrDefault(item => string.Equals(item.Code, language, StringComparison.OrdinalIgnoreCase))?.Code ?? "uk";
+        if (Application.Current is not { } app)
+        {
+            Language = next;
+            return;
+        }
+        var merged = app.Resources.MergedDictionaries;
+        var index = languageResources is null ? -1 : merged.IndexOf(languageResources);
+        if (index >= 0 && Language == next)
+        {
+            Program.WriteStartupSpan("reuse-language-" + Language, started);
+            return;
+        }
+        Language = next;
+        var replacement = new ResourceDictionary();
+        foreach (var key in Texts.Keys) replacement.Add("Text." + key, Get(key));
+        if (index < 0) merged.Add(replacement);
+        else merged[index] = replacement;
+        languageResources = replacement;
+        Program.WriteStartupSpan("apply-language-" + Language, started);
     }
 }

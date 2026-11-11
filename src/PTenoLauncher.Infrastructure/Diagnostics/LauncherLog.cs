@@ -8,7 +8,7 @@ public sealed partial class LauncherLog(LauncherPaths paths)
 {
     private readonly object gate = new();
     public static string Redact(string text) => SensitivePattern().Replace(text, "$1=[REDACTED]");
-    [GeneratedRegex(@"(?i)\b(access_token|refresh_token|authorization|identityToken|password|client_secret)\b\s*[:=]?\s*(""[^""]*""|[^\s,}]+)")]
+    [GeneratedRegex("""(?i)\b(access[-_]?token|refresh[-_]?token|authorization|identityToken|rcon\.password|password|client[-_]?secret|api[-_]?key|management-server-(?:secret|tls-keystore-password))\b["']?\s*[:=]?\s*(?:(?:Bearer|Basic)\s+)?(?:"[^"]*"|'[^']*'|[^\s,;}]+)""")]
     private static partial Regex SensitivePattern();
     public void Write(string category, string message)
     {

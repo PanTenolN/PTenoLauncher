@@ -6,7 +6,15 @@ root=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
 parser.add_argument("--setup",type=Path,default=root/"artifacts/PTenoLauncher-Setup-0.2.0-win-x64.exe")
 parser.add_argument("--older-setup",type=Path)
+parser.add_argument("--smoke-root",type=Path)
+parser.add_argument("--app-sha256")
 args=parser.parse_args()
+if args.smoke_root:
+    owned = os.environ.get("PTENO_VERIFICATION_ROOT")
+    workspace = args.smoke_root.resolve()
+    if not owned or workspace.parent != (Path(owned) / "tmp").resolve() or workspace.name != "setup-smoke" or \
+            not (Path(owned) / "owned-test-root.json").is_file() or workspace.exists() or not args.app_sha256:
+        raise SystemExit("Setup smoke requires an empty owned verification root and the candidate DLL hash.")
 uninstall_key=r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{CF2E0B60-B0F5-4E74-9481-E0CE4ABBE030}_is1"
 app_key=r"Software\PTenoLauncher"
 def regvalue(key,value,hive=winreg.HKEY_CURRENT_USER):
@@ -17,25 +25,28 @@ try:
     existing=regvalue(uninstall_key,"UninstallString") or regvalue(uninstall_key,"UninstallString",winreg.HKEY_LOCAL_MACHINE) or regvalue(app_key,"UninstallDataRoot")
 except PermissionError as error:
     blocked={"state":"blocked","phase":"registry-preflight","error":str(error),"installationStarted":False,"systemChanges":False}
-    (root/"artifacts/0.2.0/installer-lifecycle-blocked.json").write_text(json.dumps(blocked,indent=2),encoding="utf8")
+    if not args.smoke_root:
+        (root/"artifacts/0.2.0/installer-lifecycle-blocked.json").write_text(json.dumps(blocked,indent=2),encoding="utf8")
     print(json.dumps(blocked,indent=2),flush=True)
     raise SystemExit(77)
 if existing:
     raise SystemExit("An existing installation/registered data root exists. Use a disposable Windows account; no existing installation was modified.")
 stamp=datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")+"-"+uuid.uuid4().hex[:6]
-workspace=(root/".local"/("installer-lifecycle-"+stamp)).resolve()
+if not args.smoke_root:
+    workspace=(root/".local"/("installer-lifecycle-"+stamp)).resolve()
 assert workspace.is_relative_to((root/".local").resolve())
 workspace.mkdir(parents=True)
 application=workspace/"application"
 data=workspace/"PTenoLauncher"
 results=[]
-report=root/"artifacts/0.2.0"/("installer-lifecycle-"+stamp+".json")
+report=workspace/"setup-result.json" if args.smoke_root else root/"artifacts/0.2.0"/("installer-lifecycle-"+stamp+".json")
 def record(name,**details):
     results.append({"check":name,"result":"PASS",**details})
     report.write_text(json.dumps({"workspace":str(workspace),"checks":results},indent=2),encoding="utf8")
     print(name+": PASS",flush=True)
 def run(exe,argv,label):
-    proc=subprocess.run([str(exe),*map(str,argv)],cwd=root,timeout=90,capture_output=True,text=True)
+    proc=subprocess.run([str(exe),*map(str,argv)],cwd=root,timeout=90,capture_output=True,text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
     (workspace/(label+".stdout.log")).write_text(proc.stdout+proc.stderr,encoding="utf8")
     if proc.returncode: raise RuntimeError(label+" exit code "+str(proc.returncode))
 def install(setup,label):
@@ -71,6 +82,21 @@ def uninstall(purge,label):
     assert regvalue(uninstall_key,"UninstallString") is None
     assert regvalue(app_key,"UninstallDataRoot") is None
 try:
+    if args.smoke_root:
+        try:
+            install(args.setup,"setup")
+            with (application/"PTenoLauncher.dll").open("rb") as payload:
+                actual=hashlib.file_digest(payload,"sha256").hexdigest()
+            if actual.lower()!=args.app_sha256.lower():
+                raise RuntimeError("Setup installed a different Desktop DLL.")
+            smoke("installed-gui")
+            record("isolated-setup-and-gui",sha256=actual)
+        finally:
+            registered=regvalue(uninstall_key,"UninstallString")
+            if registered and Path(registered.strip('"')).resolve().parent==application.resolve():
+                uninstall(False,"uninstall")
+                record("isolated-uninstall")
+        raise SystemExit(0)
     install(args.older_setup or args.setup,"initial-install")
     smoke("initial-gui")
     profile_id=uuid.uuid4().hex

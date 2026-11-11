@@ -9,7 +9,8 @@ public sealed partial class RemoteDependencyResolver(IModCatalog catalog)
     private sealed record Need(string? Project, string? Version, string Reason);
     private sealed record Choice(CatalogModVersion Version, IReadOnlyList<string> Reasons);
     public async Task<DependencyResolution> ResolveAsync(GameProfile profile, IReadOnlyList<RemoteModRequest> roots,
-        IReadOnlyList<InstalledCatalogMod> installed, CancellationToken ct = default, IReadOnlyDictionary<string, string>? preferredVersions = null)
+        IReadOnlyList<InstalledCatalogMod> installed, CancellationToken ct = default, IReadOnlyDictionary<string, string>? preferredVersions = null,
+        bool dedicatedServer = false)
     {
         if (profile.Loader == ModLoader.Vanilla) return new([], [], ["Для модів потрібен Mod Loader."], []);
         if (roots.Count is < 1 or > 128) return new([], [], ["Виберіть від 1 до 128 модів."], []);
@@ -48,7 +49,11 @@ public sealed partial class RemoteDependencyResolver(IModCatalog catalog)
             CatalogModVersion? pinned = need.Version is null ? null : await Version(need.Version);
             var project = await Project(need.Project ?? pinned!.ProjectId);
             if (pinned is not null && pinned.ProjectId != project.Id) { Fail("Невідповідний проєкт залежності: " + project.Title); return null; }
-            if (!project.SupportsClient) { Fail("Мод не підтримує клієнт Minecraft: " + project.Title); return null; }
+            if (dedicatedServer ? !project.SupportsServer : !project.SupportsClient)
+            {
+                Fail((dedicatedServer ? "Мод не підтримує сервер Minecraft: " : "Мод не підтримує клієнт Minecraft: ") + project.Title);
+                return null;
+            }
             if (chosen.TryGetValue(project.Id, out var selected))
             {
                 if (pinned is not null && selected.Version.Id != pinned.Id)

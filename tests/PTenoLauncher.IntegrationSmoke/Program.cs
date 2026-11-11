@@ -4,6 +4,12 @@ using PTenoLauncher.Infrastructure.Minecraft;
 using PTenoLauncher.Infrastructure.Network;
 using PTenoLauncher.Infrastructure.Storage;
 
+if (args is ["--startup-probe", var exe, var startupRoot])
+{
+    await PTenoLauncher.IntegrationSmoke.StartupProbe.RunAsync(exe, startupRoot);
+    return;
+}
+
 // This controlled process probe does not create data, authenticate or execute Minecraft.
 if (args.FirstOrDefault() == "--argument-probe")
 { Console.WriteLine(JsonSerializer.Serialize(args.Skip(1).ToArray())); return; }
@@ -24,11 +30,35 @@ if (args.Length == 2 && args[0] == "--owned-cleanup")
 }
 // Opt-in live network checks, never run by the unit test suite; no authentication or game execution.
 var root = Path.GetFullPath(args.Length > 0 ? args[0] : ".local/integration");
+if (args.Length == 2 && args[1] == "--server-form-fixture")
+{
+    var operation = Environment.GetEnvironmentVariable("PTENO_VERIFICATION_ROOT");
+    if (operation is null || !string.Equals(Path.GetDirectoryName(root), SafePath.Join(operation, "tmp"), StringComparison.OrdinalIgnoreCase) ||
+        !Path.GetFileName(root).StartsWith("server-form-", StringComparison.Ordinal) ||
+        !File.Exists(SafePath.Join(operation, "owned-test-root.json")) || Directory.Exists(root))
+        throw new InvalidOperationException("Server form fixtures require a fresh owned verification directory.");
+    var fixture = new LauncherPaths(root);
+    fixture.Initialize();
+    var store = new SqliteLauncherStore(fixture);
+    await store.InitializeAsync();
+    await store.SetSettingAsync("ui.language", "uk");
+    await store.SaveProfileAsync(new GameProfile(Guid.NewGuid(), "Тестовий профіль Forge", "1.21.1", ModLoader.Forge, 2048, null,
+        DateTimeOffset.UtcNow) { PreferredLoaderVersion = "1.21.1-52.1.0" });
+    var fixtureVersion = new VersionEntry("1.21.1", "release", new("https://piston-meta.mojang.com/fixture/server-form.json"),
+        new string('1', 40), new DateTimeOffset(2024, 8, 8, 0, 0, 0, TimeSpan.Zero));
+    await AtomicFile.WriteJsonAsync(SafePath.Join(fixture.Cache, "metadata/catalog.json"), new VersionCatalog(DateTimeOffset.UtcNow, fixtureVersion.Id, [fixtureVersion]));
+    return;
+}
 var paths = new LauncherPaths(root); paths.Initialize();
 var denyNetwork = args.Length > 1 && (args[1] is "--mods-offline" or "--local-deps-offline" or "--optional-offline" or "--quilt-offline") ? new DenyNetworkHandler() : null;
 using var http = denyNetwork is null ? NetworkPolicy.CreateHttpClient() : new HttpClient(denyNetwork);
 var network = new NetworkPolicy(); var downloader = new VerifiedDownloader(http, network);
 var versions = new VersionManager(paths, downloader);
+if (args.Length == 2 && args[1] is "--local-servers" or "--vanilla-commands" or "--forge-server")
+{
+    await PTenoLauncher.IntegrationSmoke.LiveLocalServers.RunAsync(paths, versions, downloader, network, args[1]);
+    return;
+}
 if (args.Length > 1 && args[1] == "--zip-content-import")
 {
     await PTenoLauncher.IntegrationSmoke.LocalZipImport.RunAsync(paths, args); return;
@@ -389,28 +419,32 @@ if (args.Length > 1 && args[1] == "--modrinth")
 {
     var slug = args.Length > 2 ? args[2] : "reeses-sodium-options";
     var game = args.Length > 3 ? args[3] : "1.21.1";
+    var version = args.Length > 4 ? args[4] : null;
+    using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+    var ct = deadline.Token;
     var store = new SqliteLauncherStore(paths); await store.InitializeAsync();
-    var profile = new GameProfile(Guid.NewGuid(), "Modrinth live integration", game, ModLoader.Fabric, 2048, null, DateTimeOffset.UtcNow);
-    await store.SaveProfileAsync(profile);
+    var profile = new GameProfile(Guid.NewGuid(), version is null ? "Modrinth live integration" : "T1", game, ModLoader.Fabric, 2048, null, DateTimeOffset.UtcNow);
+    await store.SaveProfileAsync(profile, ct);
     var api = new PTenoLauncher.Infrastructure.Mods.ModrinthClient(paths, downloader, network);
-    var project = await api.GetProjectAsync(slug);
-    var hits = await api.SearchAsync(project.Title, game, ModLoader.Fabric);
+    var project = await api.GetProjectAsync(slug, ct);
+    var hits = await api.SearchAsync(project.Title, game, ModLoader.Fabric, ct: ct);
     if (!hits.Any(h => h.Id == project.Id)) throw new Exception("Real filtered Modrinth search did not return the expected project.");
     var remote = new PTenoLauncher.Infrastructure.Mods.RemoteModInstaller(paths, store, api, downloader, new(paths, store));
-    var plan = await remote.PreviewAsync(profile, [new(project.Id)]);
+    var plan = await remote.PreviewAsync(profile, [new(project.Id, version)], ct);
     if (!plan.Resolution.CanInstall) throw new Exception(string.Join("\n", plan.Resolution.Blockers));
-    await remote.InstallAsync(profile, plan, true);
-    var identified = await remote.PreviewAsync(profile, [new(project.Id)]);
+    await remote.InstallAsync(profile, plan, true, ct: ct);
+    var identified = await remote.PreviewAsync(profile, [new(project.Id, version)], ct);
     if (!identified.Resolution.CanInstall || identified.Resolution.Entries.Any(e => !e.AlreadyInstalled)) throw new Exception("Installed file identity failed.");
     network.Offline = true;
-    var target = profile with { Id = Guid.NewGuid(), Name = "Offline Modrinth integration" }; await store.SaveProfileAsync(target);
-    var offline = await remote.PreviewAsync(target, [new(project.Id)]);
+    var target = profile with { Id = Guid.NewGuid(), Name = "Offline Modrinth integration" }; await store.SaveProfileAsync(target, ct);
+    var offline = await remote.PreviewAsync(target, [new(project.Id, version)], ct);
     if (!offline.Resolution.CanInstall) throw new Exception(string.Join("\n", offline.Resolution.Blockers));
-    await remote.InstallAsync(target, offline, true);
+    await remote.InstallAsync(target, offline, true, ct: ct);
     Console.WriteLine(JsonSerializer.Serialize(new {
         check = "real-modrinth-download-dependency-and-offline-install",
         project = project.Title, searchVerified = true,
-        mods = plan.Resolution.Entries.Select(e => new {e.Title, e.Version.Number, e.Reason}),
+        mods = plan.Resolution.Entries.Select(e => new {e.Title, e.Version.Number, e.Version.File.Name, e.Reason}),
+        installedPaths = Directory.GetFiles(SafePath.Join(paths.Game(profile.Id), "mods"), "*.jar"),
         verifiedFiles = Directory.EnumerateFiles(Path.Combine(paths.Game(target.Id), "mods"), "*.jar").Count(),
         offlineInstall = true, gameLaunched = false
     }, AtomicFile.JsonOptions));

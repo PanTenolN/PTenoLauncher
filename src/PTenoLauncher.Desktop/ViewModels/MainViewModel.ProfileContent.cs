@@ -19,8 +19,15 @@ public sealed partial class MainViewModel
     public bool WorkspaceWorlds => IsProfileWorkspace && WorkspaceSection == ProfileSection.Worlds;
     public bool WorkspaceContentVisible => WorkspaceContentKind is not null;
     public bool WorkspaceCanImportPack => WorkspaceResourcePacks || WorkspaceShaders;
-    public string WorkspaceShaderSupport { get => workspaceShaderSupport; private set => Set(ref workspaceShaderSupport, value); }
+    public string WorkspaceShaderSupport
+    {
+        get => workspaceShaderSupport.Length == 0 ? TextCatalog.Get("WorkspaceCompatibilityUnknown") : workspaceShaderSupport;
+        private set => Set(ref workspaceShaderSupport, value);
+    }
     private string workspaceShaderSupport = "";
+    private bool workspaceHasShaderComponent;
+    public string? WorkspaceShaderSuggestion => ProfileContentCompatibility.ShaderComponent(SelectedProfile);
+    public bool WorkspaceFindShaderComponent => WorkspaceShaders && !workspaceHasShaderComponent && WorkspaceShaderSuggestion is not null;
     public string WorkspaceContentHint => TextCatalog.Get(WorkspaceResourcePacks ? "ContentResourceHint" :
         WorkspaceShaders ? "ContentShaderHint" : "ContentWorldHint");
     internal ProfileContentKind? WorkspaceContentKind => WorkspaceResourcePacks ? ProfileContentKind.ResourcePacks :
@@ -30,9 +37,49 @@ public sealed partial class MainViewModel
     public ProfileContentEntry? WorkspaceContentSelection
     {
         get => workspaceContentSelection;
-        set { if (Set(ref workspaceContentSelection, value)) Changed(nameof(HasWorkspaceContentSelection)); }
+        set
+        {
+            if (!Set(ref workspaceContentSelection, value)) return;
+            Changed(nameof(HasWorkspaceContentSelection));
+            Changed(nameof(WorkspacePackStatus));
+            Changed(nameof(WorkspacePackAction));
+            Changed(nameof(CanToggleWorkspacePack));
+        }
     }
     public bool HasWorkspaceContentSelection => WorkspaceContentSelection is not null;
+    public bool CanToggleWorkspacePack => WorkspaceContentSelection?.Enabled is not null;
+    public string WorkspacePackAction => TextCatalog.Get(WorkspaceContentSelection?.Enabled == true ? "ResourceDisable" : "ResourceEnable");
+    public string WorkspacePackStatus => WorkspaceResourcePacks && WorkspaceContentSelection is { } pack
+        ? TextCatalog.Get(pack.Compatibility switch
+        {
+            ResourcePackCompatibility.Compatible => "ResourceFormatMatches",
+            ResourcePackCompatibility.Incompatible => "ResourceFormatMismatch",
+            _ => "ResourceFormatUnknown"
+        }) + " · " + TextCatalog.Get(pack.Enabled switch { true => "ResourceEnabled", false => "ResourceDisabled", _ => "ResourceOptionsInvalid" })
+        : "";
+
+    internal Task SetWorkspacePackEnabledAsync(Guid id, ProfileContentEntry entry, bool enabled) => RunAsync(async ct =>
+    {
+        if (!WorkspaceResourcePacks || WorkspaceProfileId != id || IsGameLaunchActive || WorkspaceContentSelection != entry)
+            throw new InvalidOperationException(TextCatalog.Get("ContentChanged"));
+        try { await services.Content.SetResourcePackEnabledAsync(id, entry, enabled, ct); }
+        catch (Exception error) when (error is IOException or InvalidDataException)
+        { throw new InvalidOperationException(TextCatalog.Get(error.Message), error); }
+        await ReloadWorkspaceContentAsync(id, ProfileContentKind.ResourcePacks, entry.FileName);
+        Status = TextCatalog.Get(enabled ? "ResourceEnabled" : "ResourceDisabled");
+    });
+
+    internal Task ApplyWorldAsync(WorldPlan plan) => RunAsync(async ct =>
+    {
+        if (!WorkspaceWorlds || WorkspaceProfileId != plan.Profile.Id || IsGameLaunchActive)
+            throw new InvalidOperationException(TextCatalog.Get("ContentChanged"));
+        try { await services.Worlds.ApplyAsync(plan, ct); }
+        catch (Exception error) when (error is IOException or InvalidDataException)
+        { throw new InvalidOperationException(TextCatalog.Get(error.Message), error); }
+        var target = plan.DestinationProfile?.Id ?? plan.Profile.Id;
+        await ReloadWorkspaceContentAsync(target, ProfileContentKind.Worlds, Path.GetFileName(plan.Destination));
+        Status = TextCatalog.Format("WorldDone", plan.Destination);
+    });
 
     private Task ReloadWorkspaceContentAsync(Guid id, ProfileContentKind kind, string? select = null)
     {

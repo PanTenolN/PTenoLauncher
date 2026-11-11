@@ -14,7 +14,10 @@ public sealed record PackExportItem(string Source, string Path, PackExportAction
     string Sha512 = "", string Sha1 = "", string? ProjectId = null, string? VersionId = null, string? Version = null,
     string? License = null, Uri? Url = null, string? SourceSha512 = null);
 public sealed record PackExportPlan(Guid ProfileId, string ProfileName, string Name, string Minecraft, ModLoader Loader,
-    string? LoaderVersion, bool ShareGraphics, IReadOnlyList<PackExportItem> Items, string Fingerprint);
+    string? LoaderVersion, bool ShareGraphics, IReadOnlyList<PackExportItem> Items, string Fingerprint)
+{
+    public string SuggestedFileName => ReadableName.Stem(Name, "Minecraft", 100) + " — " + Minecraft;
+}
 
 public sealed class PackExporter(LauncherPaths paths, ILauncherStore store, ModrinthClient catalog)
 {

@@ -85,11 +85,7 @@ public sealed partial class RemoteModInstaller(LauncherPaths paths, ILauncherSto
         var cart = new List<ModCartItem>();
         foreach (var entry in DistinctArtifacts(plan.Resolution.Entries.Where(e => !e.AlreadyInstalled)))
         {
-            var file = entry.Version.File;
-            var destination = SafePath.Join(paths.Cache, $"modrinth/files/{file.Sha512}/{file.Name}");
-            await downloads.DownloadAsync(file.Url, destination, file.Sha512, file.Size, "SHA512", progress, ct, DownloadSource.Modrinth);
-            var inspection = await local.InspectAsync(destination, ct);
-            cart.Add(new(destination, inspection with { SourceStatus = "Modrinth" }, entry.Reason, entry.Title));
+            cart.Add(await PrepareCatalogJarAsync(entry.Version, entry.Reason, entry.Title, progress, ct));
         }
         if ((await ScanAsync(profile, false, ct)).Fingerprint != plan.InstalledFingerprint)
             throw new InvalidOperationException("Локальні моди змінилися під час завантаження. Повторіть перевірку.");
