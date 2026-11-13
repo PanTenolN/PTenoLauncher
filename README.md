@@ -1,57 +1,25 @@
-# PTenoLauncher
+# PTenoLauncher — сайт
 
-Local .mrpack import is available under **Modpacks**: preview, explicit selection/consent, verified cache/downloads, independent profile and recovery. Install Minecraft/Java/the exact loader separately; import is not verified gameplay. [Usage and limits](docs/MRPACK_IMPORT.md); [current proof and blockers](docs/MRPACK_IMPORT_CHECKPOINT.md).
+Статична сторінка для GitHub Pages. Для локального перегляду повністю розпакуйте ZIP і відкрийте `website/index.html` у браузері. Команди npm та збірка не потрібні. Інтернет потрібен для завантажень із GitHub.
 
-**Створено та розробляється за допомогою ШІ (OpenAI Codex).**
-**Created and developed with AI assistance (OpenAI Codex).** Requirements and development direction are set by the project owner.
+## Публікація через GitHub Pages
 
-An independent Minecraft Java Edition launcher for Windows 11 x64, built with C#, .NET 10 and Avalonia UI. Current version: **0.2.0 Development Preview**. This is work in progress, not a stable release.
+1. Створіть публічний репозиторій `PTenoLauncher-site` (наприклад, під акаунтом `PanTenolN`). Для завантаження через інтерфейс GitHub можна ініціалізувати його файлом README.
+2. Завантажте **вміст** теки `website` у корінь гілки `main`. Збережіть теку `assets` та файл `.nojekyll`. На GitHub перевірте, що `index.html` і `assets/` видно безпосередньо на вкладці **Code**. Якщо `.nojekyll` не завантажився, створіть його через **Add file → Create new file**.
+3. У **Settings → Pages** виберіть **Deploy from a branch → main → /(root) → Save**.
+4. Коли розгортання завершиться, відкрийте **Visit site**. Для наведеного прикладу адреса буде `https://pantenoln.github.io/PTenoLauncher-site/`.
+5. У приватному вікні браузера перевірте перемикання мови й обидва завантаження. Обидва посилання повинні містити той самий тег.
 
-## Downloads and build status
+Для публікації в репозиторії самого лаунчера можна покласти вміст `website` в корінь окремої гілки `gh-pages` і вибрати її як джерело в Pages. Якщо потрібно тримати сайт у `website/` гілки `main`, виберіть **GitHub Actions** і налаштуйте завантаження саме цієї теки як артефакту Pages.
 
-[Development prereleases](https://github.com/PanTenolN/PTenoLauncher/releases) · [Windows build and tests](https://github.com/PanTenolN/PTenoLauncher/actions) · [Build from source](docs/BUILDING.md)
+[Інструкція GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
-The repository contains the launcher source, tests, build scripts and installer recipe. The Windows workflow is configured to publish Setup, Portable ZIP, Source ZIP and SHA256 sums as a uniquely tagged prerelease only after successful build, tests and package/startup verification. Check the individual workflow run and release assets; configuration alone is not proof of a successful remote build or upload.
+## Як оновити випуск
 
-## Current implementation
+- Звірте публічний тег, дату публікації, імена Setup і Portable, розміри в байтах і SHA-256 із GitHub Releases. Обидва пакети мають бути з одного тегу. Поки пара не підтверджена, встановіть `assetsVerified: false` у `release.js`. Сторінка покаже повідомлення й посилання на релізи.
+- Оновіть дані в `release.js` і український резервний текст в `index.html` для перегляду без JavaScript. Якщо змінилися можливості, оновіть описи в `translations.js` для всіх восьми мов.
+- Номер, дата, розміри, імена файлів, SHA-256 і посилання для всіх мов беруться з однієї конфігурації. Дата й розміри форматуються відповідно до мови.
+- Для випуску `v0.2.2-preview.4441ad328b17` від 11 листопада 2026 року SHA-256 узято з метаданих файлів GitHub Releases. GitHub також показує прикріплений `SHA256SUMS.txt`. Сайт надає ці суми для порівняння. Він не обчислює хеш завантаженого файлу.
+- Реліз документує локальний сервер Minecraft 1.21.1 / Forge 52.1.0 із Java 21 x64. Власник проєкту вручну перевірив вхід через Microsoft із підтвердженням ліцензії та запуск Minecraft офлайн із раніше авторизованим акаунтом.
 
-- Graphite desktop interface, five live themes and SQLite settings.
-- Isolated profiles, archive/unarchive, confirmed deletion safeguards and backups/restore.
-- Official Minecraft releases, snapshots and historical catalog; cached offline use.
-- Vanilla/Fabric/Quilt installation preparation, managed Java and verified download caches.
-- Modrinth integration, deterministic recursive dependencies independent of AI, optional components and a combined local/catalog installation cart.
-- Safe static local JAR inspection, partial Fabric/Quilt/Forge/NeoForge metadata checks, integrity baselines and transaction recovery.
-- Mods navigation hidden for Vanilla profiles; a selected-profile mods-folder button.
-- Launch process/console and official authentication code with protected local account storage. Their presence does not establish successful gameplay.
-
-The source checkpoint passed **320 automatic tests** with zero build errors/warnings. Synthetic fixtures are used extensively. Real installation/cache checks are documented separately in [TEST_REPORT.md](TEST_REPORT.md); these results do not establish full game compatibility or absolute security.
-
-## Microsoft / Minecraft authentication
-
-The launcher uses its owner's registered desktop public client, MSAL and the system browser. It does not collect Microsoft passwords, embed a client secret, borrow another launcher's application ID or bypass license checks. Windows account tokens are protected locally using DPAPI CurrentUser.
-
-The owner completed browser OAuth, but a subsequent Minecraft Services request returned HTTP 403. The owner reports submitting the AppID review request on 2026-10-28; **approval remains pending**. The reason for the 403 is not confirmed. Full licensed sign-in, entitlement/profile retrieval, refresh and actual online/offline Minecraft gameplay have **not** been verified. See [MICROSOFT_AUTH_SETUP.md](MICROSOFT_AUTH_SETUP.md).
-
-## Languages
-
-**Ukrainian, English, Polish, German, Spanish, French, Brazilian Portuguese and Russian are selectable**, with 230 validated UI keys per language, live resource switching and SQLite persistence. Low-level diagnostic localization and linguistic/DPI review remain partial. See [localization status](docs/LOCALIZATION.md).
-
-## AI disclosure
-
-AI-assisted development is separate from optional AI functionality inside the launcher. The runtime AI gate defaults to off. An optional OpenAI assistant/selected-log analysis and modern mod-JSON translation workflow are implemented, with protected user-supplied credentials, explicit paid-transfer consent, a local editor, incremental updates and resource-pack export. Live API/model quality and game activation remain unverified. No local AI models are included. See [online AI usage and limits](docs/ONLINE_AI.md). Minecraft preparation, mods and deterministic dependencies do not depend on an AI provider.
-
-## Known limits and next work
-
-Forge/NeoForge loader installation, complete nested-mod compatibility, modpacks, server management, broader AI/mod-format coverage, plugins and updating remain incomplete. The current installer lifecycle and licensed game tests need separate verification. Binaries are unsigned; local NuGet vulnerability-audit connectivity was blocked, and the enabled remote audit must be assessed from its actual run.
-
-All approved requirements are retained in [REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md), [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) and [docs/ROADMAP.md](docs/ROADMAP.md). Preview limitations are listed in [docs/PREVIEW_RELEASE.md](docs/PREVIEW_RELEASE.md).
-
-Minecraft game files, user worlds, private keys and account tokens are not distributed in this repository. This is an unofficial community project, not an official Minecraft product and not approved by or associated with Mojang or Microsoft.
-
-Current module readiness: [PROJECT_PROGRESS_SUMMARY.md](PROJECT_PROGRESS_SUMMARY.md). Latest process-lifecycle evidence and continuation: [docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md](docs/PROCESS_LIFECYCLE_RELEASE_CHECKPOINT.md).
-
-On the first normal startup, select one of eight languages in the welcome menu and confirm to save it locally. Existing supported preferences skip the menu; language can later be changed in Settings / Appearance. [First-run details](docs/FIRST_RUN_LANGUAGE.md) and [latest continuation](docs/FIRST_RUN_LANGUAGE_CHECKPOINT.md).
-
-Managed Java integrity and runtime-matrix checks: [verification](docs/JAVA_RUNTIME_VERIFICATION.md) and [latest continuation](docs/JAVA_RUNTIME_CHECKPOINT.md).
-
-Local ZIP import (supported subset, usage and limits): [docs/ZIP_IMPORT.md](docs/ZIP_IMPORT.md). Current checkpoint: [docs/ZIP_IMPORT_CHECKPOINT.md](docs/ZIP_IMPORT_CHECKPOINT.md).
+[Нотатки випуску](https://github.com/PanTenolN/PTenoLauncher/releases/tag/v0.2.2-preview.4441ad328b17)
